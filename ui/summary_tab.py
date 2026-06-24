@@ -5,6 +5,7 @@ import customtkinter as ctk
 from tkinter import messagebox
 from utils import read_file, save_string_to_txt, clear_file_content, get_word_count
 from ui.context_menu import TextWidgetContextMenu
+from ui.styles import EDITOR_FONT, UI_FONT
 
 def build_summary_tab(self):
     self.summary_tab = self.tabview.add("Global Summary")
@@ -14,16 +15,16 @@ def build_summary_tab(self):
     self.summary_tab.columnconfigure(1, weight=0)
     self.summary_tab.columnconfigure(2, weight=0)
 
-    load_btn = ctk.CTkButton(self.summary_tab, text="加载 global_summary.txt", command=self.load_global_summary, font=("Microsoft YaHei", 12))
+    load_btn = ctk.CTkButton(self.summary_tab, text="加载 global_summary.txt", command=self.load_global_summary, font=UI_FONT)
     load_btn.grid(row=0, column=0, padx=5, pady=5, sticky="w")
 
-    self.word_count_label = ctk.CTkLabel(self.summary_tab, text="字数：0", font=("Microsoft YaHei", 12))
+    self.word_count_label = ctk.CTkLabel(self.summary_tab, text="字数：0", font=UI_FONT)
     self.word_count_label.grid(row=0, column=1, padx=5, pady=5, sticky="w")
 
-    save_btn = ctk.CTkButton(self.summary_tab, text="保存修改", command=self.save_global_summary, font=("Microsoft YaHei", 12))
+    save_btn = ctk.CTkButton(self.summary_tab, text="保存修改", command=self.save_global_summary, font=UI_FONT)
     save_btn.grid(row=0, column=2, padx=5, pady=5, sticky="e")
 
-    self.summary_text = ctk.CTkTextbox(self.summary_tab, wrap="word", font=("Microsoft YaHei", 12))
+    self.summary_text = ctk.CTkTextbox(self.summary_tab, wrap="word", font=EDITOR_FONT)
     TextWidgetContextMenu(self.summary_text)
     self.summary_text.grid(row=1, column=0, sticky="nsew", padx=5, pady=5, columnspan=3)
 

@@ -10,8 +10,9 @@ from customtkinter import CTkScrollableFrame, CTkTextbox, END
 from utils import read_file, save_string_to_txt  # 导入 utils 中的函数
 from novel_generator.common import invoke_with_cleaning  # 新增导入
 import prompt_definitions
+from ui.styles import EDITOR_FONT, UI_FONT
 
-DEFAULT_FONT = ("Microsoft YaHei", 12)
+DEFAULT_FONT = UI_FONT
 INVALID_NAME_CHARS = set('<>:"/\\|?*')
 WINDOWS_RESERVED_NAMES = {
     "CON", "PRN", "AUX", "NUL",
@@ -128,7 +129,7 @@ class RoleLibrary:
         preview_container.pack(fill="both", expand=True, pady=(5, 0))
 
         self.preview_text = ctk.CTkTextbox(preview_container, wrap="word",
-                                            font=("Microsoft YaHei", 12))
+                                            font=EDITOR_FONT)
         scrollbar = ctk.CTkScrollbar(
             preview_container, command=self.preview_text.yview)
         self.preview_text.configure(yscrollcommand=scrollbar.set)
@@ -477,13 +478,13 @@ class RoleLibrary:
                 
                 # 角色名称
                 lbl = ctk.CTkLabel(frame, text=role_name, 
-                                 font=("Microsoft YaHei", 12))
+                                 font=UI_FONT)
                 lbl.pack(side="left", padx=5)
                 
                 # 属性摘要
                 attrs = [f"{k}({len(v)})" for k,v in attributes.items()]
                 summary = ctk.CTkLabel(frame, text=" | ".join(attrs), 
-                                     font=("Microsoft YaHei", 12),
+                                     font=UI_FONT,
                                      text_color="gray")
                 summary.pack(side="right", padx=10)
                 
@@ -603,13 +604,13 @@ class RoleLibrary:
             
             # 角色名称标签
             lbl = ctk.CTkLabel(frame, text=role['name'], 
-                             font=("Microsoft YaHei", 12))
+                             font=UI_FONT)
             lbl.pack(side="left", padx=5)
             
             # 属性摘要
             attrs = [f"{k}({len(v)})" for k,v in role['attributes'].items()]
             summary = ctk.CTkLabel(frame, text=" | ".join(attrs), 
-                                 font=("Microsoft YaHei", 12),
+                                 font=UI_FONT,
                                  text_color="gray")
             summary.pack(side="right", padx=10)
             
@@ -1072,7 +1073,7 @@ class RoleLibrary:
 
         # 固定按钮
         ctk.CTkButton(category_frame, text="全部", width=50,
-                      font=("Microsoft YaHei", 12),
+                      font=UI_FONT,
                       command=lambda: self.show_category("全部")).pack(side="left", padx=2)
 
         # 滚动分类区
@@ -1595,5 +1596,4 @@ class RoleLibrary:
     def on_close(self):
         """关闭窗口"""
         self.window.destroy()
-
 

@@ -19,6 +19,7 @@ from novel_generator import (
     build_chapter_prompt
 )
 from consistency_checker import check_consistency
+from ui.styles import EDITOR_FONT, UI_FONT
 
 def generate_novel_architecture_ui(self):
     filepath = self.filepath_var.get().strip()
@@ -189,12 +190,12 @@ def generate_chapter_draft_ui(self):
                 dialog = ctk.CTkToplevel(self.master)
                 dialog.title("当前章节请求提示词（可编辑）")
                 dialog.geometry("600x400")
-                text_box = ctk.CTkTextbox(dialog, wrap="word", font=("Microsoft YaHei", 12))
+                text_box = ctk.CTkTextbox(dialog, wrap="word", font=EDITOR_FONT)
                 text_box.pack(fill="both", expand=True, padx=10, pady=10)
 
                 # 字数统计标签
                 count_prefix = "Words: " if config_manager.IS_ENGLISH else "字数："
-                wordcount_label = ctk.CTkLabel(dialog, text=f"字数：0", font=("Microsoft YaHei", 12))
+                wordcount_label = ctk.CTkLabel(dialog, text=f"字数：0", font=UI_FONT)
                 wordcount_label.pack(side="left", padx=(10,0), pady=5)
                 
                 # 插入角色内容
@@ -265,9 +266,9 @@ def generate_chapter_draft_ui(self):
                     result["prompt"] = None
                     dialog.destroy()
                     event.set()
-                btn_confirm = ctk.CTkButton(button_frame, text="确认使用", font=("Microsoft YaHei", 12), command=on_confirm)
+                btn_confirm = ctk.CTkButton(button_frame, text="确认使用", font=UI_FONT, command=on_confirm)
                 btn_confirm.pack(side="left", padx=10)
-                btn_cancel = ctk.CTkButton(button_frame, text="取消请求", font=("Microsoft YaHei", 12), command=on_cancel)
+                btn_cancel = ctk.CTkButton(button_frame, text="取消请求", font=UI_FONT, command=on_cancel)
                 btn_cancel.pack(side="left", padx=10)
                 # 若用户直接关闭弹窗，则调用 on_cancel 处理
                 dialog.protocol("WM_DELETE_WINDOW", on_cancel)
@@ -483,31 +484,31 @@ def generate_batch_ui(self):
         dialog.grid_columnconfigure(3, weight=1)
         
         # 起始章节
-        ctk.CTkLabel(dialog, text="起始章节:").grid(row=0, column=0, padx=10, pady=10, sticky="w")
-        entry_start = ctk.CTkEntry(dialog)
+        ctk.CTkLabel(dialog, text="起始章节:", font=UI_FONT).grid(row=0, column=0, padx=10, pady=10, sticky="w")
+        entry_start = ctk.CTkEntry(dialog, font=UI_FONT)
         entry_start.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
         entry_start.insert(0, str(num))
         
         # 结束章节
-        ctk.CTkLabel(dialog, text="结束章节:").grid(row=0, column=2, padx=10, pady=10, sticky="w")
-        entry_end = ctk.CTkEntry(dialog)
+        ctk.CTkLabel(dialog, text="结束章节:", font=UI_FONT).grid(row=0, column=2, padx=10, pady=10, sticky="w")
+        entry_end = ctk.CTkEntry(dialog, font=UI_FONT)
         entry_end.grid(row=0, column=3, padx=10, pady=10, sticky="ew")
         
         # 期望字数
-        ctk.CTkLabel(dialog, text="期望字数:").grid(row=1, column=0, padx=10, pady=10, sticky="w")
-        entry_word = ctk.CTkEntry(dialog)
+        ctk.CTkLabel(dialog, text="期望字数:", font=UI_FONT).grid(row=1, column=0, padx=10, pady=10, sticky="w")
+        entry_word = ctk.CTkEntry(dialog, font=UI_FONT)
         entry_word.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
         entry_word.insert(0, self.word_number_var.get())
         
         # 最低字数
-        ctk.CTkLabel(dialog, text="最低字数:").grid(row=1, column=2, padx=10, pady=10, sticky="w")
-        entry_min = ctk.CTkEntry(dialog)
+        ctk.CTkLabel(dialog, text="最低字数:", font=UI_FONT).grid(row=1, column=2, padx=10, pady=10, sticky="w")
+        entry_min = ctk.CTkEntry(dialog, font=UI_FONT)
         entry_min.grid(row=1, column=3, padx=10, pady=10, sticky="ew")
         entry_min.insert(0, self.word_number_var.get())
 
         # 自动扩写选项
         auto_enrich_bool = ctk.BooleanVar()
-        auto_enrich_bool_ck = ctk.CTkCheckBox(dialog, text="低于最低字数时自动扩写", variable=auto_enrich_bool)
+        auto_enrich_bool_ck = ctk.CTkCheckBox(dialog, text="低于最低字数时自动扩写", variable=auto_enrich_bool, font=UI_FONT)
         auto_enrich_bool_ck.grid(row=2, column=0, columnspan=2, padx=10, pady=10, sticky="w")
 
         result = {"start": None, "end": None, "word": None, "min": None, "auto_enrich": None, "close": False}
@@ -539,8 +540,8 @@ def generate_batch_ui(self):
         button_frame.grid_columnconfigure(0, weight=1)
         button_frame.grid_columnconfigure(1, weight=1)
         
-        ctk.CTkButton(button_frame, text="确认", command=on_confirm).grid(row=0, column=0, padx=10, pady=10, sticky="e")
-        ctk.CTkButton(button_frame, text="取消", command=on_cancel).grid(row=0, column=1, padx=10, pady=10, sticky="w")
+        ctk.CTkButton(button_frame, text="确认", command=on_confirm, font=UI_FONT).grid(row=0, column=0, padx=10, pady=10, sticky="e")
+        ctk.CTkButton(button_frame, text="取消", command=on_cancel, font=UI_FONT).grid(row=0, column=1, padx=10, pady=10, sticky="w")
         
         dialog.protocol("WM_DELETE_WINDOW", on_cancel)
         dialog.transient(self.master)
@@ -818,7 +819,7 @@ def show_plot_arcs_ui(self):
     top = ctk.CTkToplevel(self.master)
     top.title("剧情要点/未解决冲突")
     top.geometry("600x400")
-    text_area = ctk.CTkTextbox(top, wrap="word", font=("Microsoft YaHei", 12))
+    text_area = ctk.CTkTextbox(top, wrap="word", font=EDITOR_FONT)
     text_area.pack(fill="both", expand=True, padx=10, pady=10)
     text_area.insert("0.0", arcs_text)
     text_area.configure(state="disabled")

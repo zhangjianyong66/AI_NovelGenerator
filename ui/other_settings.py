@@ -12,6 +12,7 @@ import threading
 from xml.etree import ElementTree as ET
 import shutil
 import time
+from ui.styles import TITLE_FONT, UI_FONT
 
 REQUEST_TIMEOUT = (5, 30)
 def build_other_settings_tab(self):
@@ -118,7 +119,7 @@ def build_other_settings_tab(self):
     dav_frame = ctk.CTkFrame(self.other_settings_tab)
     dav_frame.pack(padx=20, pady=20, fill="x")
 
-    dav_title = ctk.CTkLabel(dav_frame, text="webdav设置", font=("Microsoft YaHei", 16, "bold"))
+    dav_title = ctk.CTkLabel(dav_frame, text="webdav设置", font=TITLE_FONT)
     dav_title.pack(anchor="w", padx=5, pady=(0, 5))
     dav_warp_frame = ctk.CTkFrame(dav_frame, corner_radius=10, border_width=2, border_color="gray")
     dav_warp_frame.pack(fill="x", padx=5)
@@ -126,33 +127,33 @@ def build_other_settings_tab(self):
 
     
 
-    create_label_with_help(self, parent=dav_warp_frame, label_text="Webdav URL", tooltip_key="webdav_url",row=0, column=0, font=("Microsoft YaHei", 12), sticky="w")
-    dav_url_entry = ctk.CTkEntry(dav_warp_frame, textvariable=self.webdav_url_var, font=("Microsoft YaHei", 12))
+    create_label_with_help(self, parent=dav_warp_frame, label_text="Webdav URL", tooltip_key="webdav_url",row=0, column=0, font=UI_FONT, sticky="w")
+    dav_url_entry = ctk.CTkEntry(dav_warp_frame, textvariable=self.webdav_url_var, font=UI_FONT)
     dav_url_entry.grid(row=0, column=1, padx=5, pady=5, sticky="w")
 
-    create_label_with_help(self, parent=dav_warp_frame, label_text="Webdav用户名", tooltip_key="webdav_username",row=1, column=0, font=("Microsoft YaHei", 12), sticky="w")
-    dav_username_entry = ctk.CTkEntry(dav_warp_frame, textvariable=self.webdav_username_var, font=("Microsoft YaHei", 12))
+    create_label_with_help(self, parent=dav_warp_frame, label_text="Webdav用户名", tooltip_key="webdav_username",row=1, column=0, font=UI_FONT, sticky="w")
+    dav_username_entry = ctk.CTkEntry(dav_warp_frame, textvariable=self.webdav_username_var, font=UI_FONT)
     dav_username_entry.grid(row=1, column=1, padx=5, pady=5, sticky="w")
 
-    create_label_with_help(self, parent=dav_warp_frame, label_text="Webdav密码", tooltip_key="webdav_password",row=2, column=0, font=("Microsoft YaHei", 12), sticky="w")
-    dav_password_entry = ctk.CTkEntry(dav_warp_frame, textvariable=self.webdav_password_var, font=("Microsoft YaHei", 12), show="*")
+    create_label_with_help(self, parent=dav_warp_frame, label_text="Webdav密码", tooltip_key="webdav_password",row=2, column=0, font=UI_FONT, sticky="w")
+    dav_password_entry = ctk.CTkEntry(dav_warp_frame, textvariable=self.webdav_password_var, font=UI_FONT, show="*")
     dav_password_entry.grid(row=2, column=1, padx=5, pady=5, sticky="w")
 
     button_frame = ctk.CTkFrame(dav_warp_frame)
     button_frame.grid(row=3, column=0, columnspan=2, padx=5, pady=10, sticky="w")
     
     # 测试连接按钮
-    test_btn = ctk.CTkButton(button_frame, text="测试连接", font=("Microsoft YaHei", 12),
+    test_btn = ctk.CTkButton(button_frame, text="测试连接", font=UI_FONT,
                             command=test_webdav_connection)
     test_btn.pack(side="left", padx=5)
     
     # 保存设置按钮
-    save_btn = ctk.CTkButton(button_frame, text="备份", font=("Microsoft YaHei", 12),
+    save_btn = ctk.CTkButton(button_frame, text="备份", font=UI_FONT,
                             command=backup_to_webdav)
     save_btn.pack(side="left", padx=5)
     
     # 重置按钮
-    reset_btn = ctk.CTkButton(button_frame, text="恢复", font=("Microsoft YaHei", 12),
+    reset_btn = ctk.CTkButton(button_frame, text="恢复", font=UI_FONT,
                              command=restore_from_webdav)
     reset_btn.pack(side="left", padx=5)
 

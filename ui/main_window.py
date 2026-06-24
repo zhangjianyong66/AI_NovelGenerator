@@ -15,6 +15,7 @@ from utils import read_file, save_string_to_txt, clear_file_content
 from tooltips import tooltips
 
 from ui.context_menu import TextWidgetContextMenu
+from ui.styles import BOLD_FONT, UI_FONT
 from ui.main_tab import build_main_tab, build_left_layout, build_right_layout
 from ui.config_tab import build_config_tabview, load_config_btn, save_config_btn
 from ui.novel_params_tab import build_novel_params_area, build_optional_buttons_area
@@ -312,7 +313,7 @@ class NovelGeneratorGUI:
                     
                     # 添加分类标签
                     category_label = ctk.CTkLabel(category_frame, text=f"【{category}】", 
-                                                font=("Microsoft YaHei", 12, "bold"))
+                                                font=BOLD_FONT)
                     category_label.grid(row=0, column=0, padx=(0,10), sticky="w")
                     
                     # 初始化角色排列参数
@@ -325,7 +326,7 @@ class NovelGeneratorGUI:
                         if role_file.endswith(".txt"):
                             role_name = os.path.splitext(role_file)[0]
                             if not any(name == role_name for _, name in self.selected_roles):
-                                chk = ctk.CTkCheckBox(category_frame, text=role_name)
+                                chk = ctk.CTkCheckBox(category_frame, text=role_name, font=UI_FONT)
                                 chk.grid(row=row_num, column=col_num, padx=5, pady=2, sticky="w")
                                 self.selected_roles.append((chk, role_name))
                                 
@@ -359,11 +360,11 @@ class NovelGeneratorGUI:
             self.char_inv_text.insert("0.0", ", ".join(selected))
             import_window.destroy()
             
-        btn_confirm = ctk.CTkButton(btn_frame, text="选择", command=confirm_selection)
+        btn_confirm = ctk.CTkButton(btn_frame, text="选择", command=confirm_selection, font=UI_FONT)
         btn_confirm.pack(side="left", padx=20)
         
         # 取消按钮
-        btn_cancel = ctk.CTkButton(btn_frame, text="取消", command=import_window.destroy)
+        btn_cancel = ctk.CTkButton(btn_frame, text="取消", command=import_window.destroy, font=UI_FONT)
         btn_cancel.pack(side="right", padx=20)
 
     def show_role_library(self):

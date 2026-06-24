@@ -18,4 +18,10 @@ test.py
 /backup
 uv.lock
 .python-version
-pyproject.toml
+pyproject.toml*.out
+*.tmp
+*.cache
+*.pid
+*.seed
+.pytest_cache/
+coverage/

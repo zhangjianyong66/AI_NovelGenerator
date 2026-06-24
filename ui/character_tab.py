@@ -5,6 +5,7 @@ import customtkinter as ctk
 from tkinter import messagebox
 from utils import read_file, save_string_to_txt, clear_file_content, get_word_count
 from ui.context_menu import TextWidgetContextMenu
+from ui.styles import EDITOR_FONT, UI_FONT
 
 def build_character_tab(self):
     self.character_tab = self.tabview.add("Character State")
@@ -12,16 +13,16 @@ def build_character_tab(self):
     self.character_tab.rowconfigure(1, weight=1)
     self.character_tab.columnconfigure(0, weight=1)
 
-    load_btn = ctk.CTkButton(self.character_tab, text="加载 character_state.txt", command=self.load_character_state, font=("Microsoft YaHei", 12))
+    load_btn = ctk.CTkButton(self.character_tab, text="加载 character_state.txt", command=self.load_character_state, font=UI_FONT)
     load_btn.grid(row=0, column=0, padx=5, pady=5, sticky="w")
 
-    self.character_wordcount_label = ctk.CTkLabel(self.character_tab, text="字数：0", font=("Microsoft YaHei", 12))
+    self.character_wordcount_label = ctk.CTkLabel(self.character_tab, text="字数：0", font=UI_FONT)
     self.character_wordcount_label.grid(row=0, column=1, padx=5, pady=5, sticky="w")
 
-    save_btn = ctk.CTkButton(self.character_tab, text="保存修改", command=self.save_character_state, font=("Microsoft YaHei", 12))
+    save_btn = ctk.CTkButton(self.character_tab, text="保存修改", command=self.save_character_state, font=UI_FONT)
     save_btn.grid(row=0, column=2, padx=5, pady=5, sticky="e")
 
-    self.character_text = ctk.CTkTextbox(self.character_tab, wrap="word", font=("Microsoft YaHei", 12))
+    self.character_text = ctk.CTkTextbox(self.character_tab, wrap="word", font=EDITOR_FONT)
     
     def update_word_count(event=None):
         text = self.character_text.get("0.0", "end-1c")
