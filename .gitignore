@@ -25,3 +25,4 @@ pyproject.toml*.out
 *.seed
 .pytest_cache/
 coverage/
+*.out

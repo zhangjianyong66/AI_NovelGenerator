@@ -11,6 +11,7 @@
 - 切换不同 Embedding 模型后，建议清空 `vectorstore/`，避免旧向量库影响检索。
 - UI 字体与控件缩放集中定义在 `ui/styles.py`；新增或调整 CustomTkinter 界面时优先使用 `UI_FONT`、`EDITOR_FONT`、`SMALL_FONT`、`BOLD_FONT`、`TITLE_FONT` 和 `WIDGET_SCALING`，避免重新散落硬编码字体元组。该模块会按系统选择中文字体，Linux/Ubuntu 优先使用 `Noto Sans CJK SC` 等中文字体，Windows 优先使用 `Microsoft YaHei`。
 - 当前测试可用 `python -m pytest tests` 运行；若环境缺少 pytest，先安装测试依赖或使用项目环境中的测试工具。
+- 架构重构计划放在 `docs/superpowers/plans/`；主计划为 `2026-06-24-architecture-refactor.md`，执行时先读取主计划和对应 milestone 子计划。
 
 # 协作约定
 
