@@ -65,12 +65,13 @@ def test_chapter_endpoint_rejects_missing_chapter_file(tmp_path):
     assert response.status_code == 404
 
 
-def test_chapters_endpoint_requires_output_path(tmp_path):
+def test_chapters_endpoint_uses_default_output_path_when_missing(tmp_path):
     config_file = tmp_path / "config.json"
     write_config(config_file, "")
     client = TestClient(create_app(config_file=str(config_file)))
 
     response = client.get("/api/projects/current/chapters")
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "请先设置项目输出路径"
+    assert response.status_code == 200
+    assert response.json() == []
+    assert (tmp_path / "output").is_dir()

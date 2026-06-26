@@ -135,3 +135,17 @@ def test_project_config_rejects_negative_counts(tmp_path):
     )
 
     assert response.status_code == 422
+
+
+def test_default_config_uses_local_output_directory_when_missing(tmp_path):
+    config_file = tmp_path / "config.json"
+    client = TestClient(create_app(config_file=str(config_file)))
+
+    response = client.get("/api/project-config")
+
+    assert response.status_code == 200
+    assert response.json()["outputPath"] == str(tmp_path / "output")
+
+    saved = json.loads(config_file.read_text(encoding="utf-8"))
+    assert saved["other_params"]["filepath"] == str(tmp_path / "output")
+    assert (tmp_path / "output").is_dir()

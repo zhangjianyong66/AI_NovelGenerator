@@ -11,6 +11,7 @@ from typing import Any
 import requests
 from requests.auth import HTTPBasicAuth
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from chapter_directory_parser import get_chapter_info_from_blueprint
@@ -19,6 +20,7 @@ from chapter_directory_parser import get_chapter_info_from_blueprint
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_FILE = PROJECT_ROOT / "config.json"
 REQUEST_TIMEOUT = (5, 30)
+LOCAL_FRONTEND_ORIGIN_REGEX = r"^http://(127\.0\.0\.1|localhost):\d+$"
 
 
 class NovelParams(BaseModel):
@@ -37,6 +39,17 @@ class NovelParams(BaseModel):
 class ProjectConfig(BaseModel):
     outputPath: str = ""
     novelParams: NovelParams = Field(default_factory=NovelParams)
+
+
+class ProjectSummary(BaseModel):
+    id: str
+    title: str
+    genre: str
+    status: str
+    summary: str
+    updatedAt: str
+    chaptersTotal: int
+    chaptersCompleted: int
 
 
 class LlmConfigItem(BaseModel):
@@ -155,6 +168,15 @@ class KnowledgeImportRequest(BaseModel):
     filePath: str
 
 
+class KnowledgeItem(BaseModel):
+    id: str
+    type: str
+    name: str
+    description: str
+    tags: list[str]
+    updatedAt: str
+
+
 class PlotArcsResponse(BaseModel):
     exists: bool
     content: str
@@ -231,14 +253,29 @@ def _default_config() -> dict[str, Any]:
     }
 
 
+def _default_output_path(config_file: Path) -> Path:
+    return config_file.parent / "output"
+
+
 def _load_config(config_file: Path) -> dict[str, Any]:
     if not config_file.exists():
         config = _default_config()
+        default_output_path = _default_output_path(config_file)
+        config["other_params"]["filepath"] = str(default_output_path)
+        default_output_path.mkdir(parents=True, exist_ok=True)
         _save_config(config_file, config)
         return config
 
     with config_file.open("r", encoding="utf-8") as file:
-        return json.load(file)
+        config = json.load(file)
+
+    params = config.setdefault("other_params", {})
+    if not str(params.get("filepath") or "").strip():
+        default_output_path = _default_output_path(config_file)
+        params["filepath"] = str(default_output_path)
+        default_output_path.mkdir(parents=True, exist_ok=True)
+        _save_config(config_file, config)
+    return config
 
 
 def _save_config(config_file: Path, config: dict[str, Any]) -> None:
@@ -262,6 +299,26 @@ def _active_output_path(config_path: Path) -> Path:
     if not str(filepath).strip():
         raise HTTPException(status_code=400, detail="请先设置项目输出路径")
     return Path(filepath)
+
+
+def _project_summary(config_path: Path) -> ProjectSummary:
+    config = _load_config(config_path)
+    params = config.get("other_params") or {}
+    output_path = _active_output_path(config_path)
+    chapter_numbers = _list_chapter_numbers(output_path)
+    title = str(params.get("topic") or output_path.name or "当前项目")
+    configured_chapters = int(params.get("num_chapters") or 0)
+    chapters_total = configured_chapters or len(chapter_numbers)
+    return ProjectSummary(
+        id="current",
+        title=title,
+        genre=str(params.get("genre") or ""),
+        status="active",
+        summary=str(output_path),
+        updatedAt="",
+        chaptersTotal=chapters_total,
+        chaptersCompleted=len(chapter_numbers),
+    )
 
 
 def _project_file_response(file_id: str, output_path: Path) -> ProjectFile:
@@ -350,6 +407,40 @@ def _role_summary(category: str, file_path: Path) -> RoleSummary:
         filename=file_path.name,
         wordCount=_count_words(content),
     )
+
+
+def _knowledge_items(output_path: Path) -> list[KnowledgeItem]:
+    items: list[KnowledgeItem] = []
+    import_dir = output_path / "vectorstore" / "imported"
+    if import_dir.exists():
+        for file_path in sorted(path for path in import_dir.iterdir() if path.is_file()):
+            items.append(
+                KnowledgeItem(
+                    id=f"file/{file_path.name}",
+                    type="file",
+                    name=file_path.name,
+                    description=str(file_path.relative_to(output_path)),
+                    tags=["导入文件"],
+                    updatedAt="",
+                )
+            )
+
+    library_path = _role_library_path(output_path)
+    if library_path.exists():
+        for category_path in sorted(path for path in library_path.iterdir() if path.is_dir()):
+            for role_path in sorted(category_path.glob("*.txt")):
+                role_name = role_path.stem
+                items.append(
+                    KnowledgeItem(
+                        id=f"role/{category_path.name}/{role_name}",
+                        type="role",
+                        name=role_name,
+                        description=str(role_path.relative_to(library_path)),
+                        tags=["角色库", category_path.name],
+                        updatedAt="",
+                    )
+                )
+    return items
 
 
 def _project_config_from_legacy(config: dict[str, Any]) -> ProjectConfig:
@@ -541,6 +632,12 @@ def _backup_local_config(config_path: Path) -> Path | None:
 
 def create_app(config_file: str | Path | None = None) -> FastAPI:
     app = FastAPI(title="AI Novel Generator Local API")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=LOCAL_FRONTEND_ORIGIN_REGEX,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     config_path = Path(config_file) if config_file is not None else DEFAULT_CONFIG_FILE
     generation_jobs: dict[str, GenerationJob] = {}
 
@@ -645,6 +742,10 @@ def create_app(config_file: str | Path | None = None) -> FastAPI:
             return ConfigTestResult(success=False, message="LLM 配置缺少 API Key")
         return ConfigTestResult(success=True, message="LLM 配置已具备测试所需字段")
 
+    @app.get("/api/projects", response_model=list[ProjectSummary])
+    def list_projects() -> list[ProjectSummary]:
+        return [_project_summary(config_path)]
+
     @app.get("/api/project-files", response_model=list[ProjectFile])
     def list_project_files() -> list[ProjectFile]:
         output_path = _active_output_path(config_path)
@@ -744,6 +845,11 @@ def create_app(config_file: str | Path | None = None) -> FastAPI:
         if job_id not in generation_jobs:
             raise HTTPException(status_code=404, detail="任务不存在")
         return generation_jobs[job_id]
+
+    @app.get("/api/knowledge", response_model=list[KnowledgeItem])
+    def list_knowledge() -> list[KnowledgeItem]:
+        output_path = _active_output_path(config_path)
+        return _knowledge_items(output_path)
 
     @app.post("/api/knowledge/import", response_model=OperationResult)
     def import_knowledge_file(request: KnowledgeImportRequest) -> OperationResult:

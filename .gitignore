@@ -8,6 +8,7 @@ __pycache__/
 *.pyc
 /markdown
 /vectorstore
+/output
 /example
 config.json
 config_test.json

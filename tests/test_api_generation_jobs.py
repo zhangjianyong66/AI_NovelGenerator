@@ -60,7 +60,7 @@ def test_generation_job_endpoint_supports_core_stages(tmp_path):
         assert response.json()["stage"] == stage
 
 
-def test_generation_job_endpoint_rejects_missing_output_path(tmp_path):
+def test_generation_job_endpoint_uses_default_output_path_when_missing(tmp_path):
     config_file = tmp_path / "config.json"
     write_config(config_file, "")
     client = TestClient(create_app(config_file=str(config_file)))
@@ -70,8 +70,10 @@ def test_generation_job_endpoint_rejects_missing_output_path(tmp_path):
         json={"projectId": "current", "stage": "architecture"},
     )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "请先设置项目输出路径"
+    assert response.status_code == 200
+    assert response.json()["stage"] == "architecture"
+    assert f"输出路径：{tmp_path / 'output'}" in response.json()["log"]
+    assert (tmp_path / "output").is_dir()
 
 
 def test_generation_job_endpoint_rejects_missing_chapter_for_chapter_stage(tmp_path):

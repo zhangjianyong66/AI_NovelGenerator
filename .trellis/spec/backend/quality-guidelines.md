@@ -48,10 +48,19 @@ npm run build
 uvicorn app.api.server:app --reload --host 127.0.0.1 --port 8000
 ```
 
+前后端联调：
+
+```bash
+./scripts/dev.sh
+```
+
+该脚本会同时启动 `uvicorn app.api.server:app` 和前端 Vite dev server，并把 `VITE_API_BASE_URL` 指向本地 API。可用 `API_HOST`、`API_PORT`、`FRONTEND_HOST`、`FRONTEND_PORT` 覆盖默认地址。
+
 ## 测试约定
 
 - API 测试使用 `fastapi.testclient.TestClient` 和 `create_app(config_file=str(tmp_path / "config.json"))`。
 - 测试应创建临时 `config.json` 和输出目录，不读写仓库根目录真实配置。
+- 缺失输出目录的 API 测试应断言默认 `output/` 会被创建并写回临时配置，而不是依赖 400 错误。
 - 配置保存测试要断言 legacy 字段仍保留，例如保存项目配置后 `llm_configs` 不丢失。
 - 新增接口至少覆盖成功路径、关键错误路径和持久化结果。
 - 解析器和纯函数优先写直接单元测试，例如 `tests/test_chapter_directory_parser.py`。

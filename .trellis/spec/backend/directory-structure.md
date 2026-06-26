@@ -61,6 +61,7 @@ frontend/
 - 生产 GUI：`python main.py`
 - 本地 API：`uvicorn app.api.server:app --reload --host 127.0.0.1 --port 8000`
 - 前端开发：`cd frontend && npm run dev`
+- 前后端联调：`./scripts/dev.sh`
 - Tauri 开发：`cd frontend && npm run tauri:dev`
 
 ## 部署与打包

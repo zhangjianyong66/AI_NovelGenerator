@@ -7,6 +7,7 @@
 - 默认配置文件是项目根目录 `config.json`，已被 `.gitignore` 忽略，禁止提交。
 - 旧 GUI 通过 `config_manager.py` 读写配置；如果文件不存在，`create_config()` 会写入默认结构。
 - FastAPI 本地 API 默认读写同一个 `config.json`，测试中通过 `create_app(config_file=tmp_path / "config.json")` 隔离真实配置。
+- FastAPI 本地 API 读取配置时，如果 `other_params.filepath` 缺失或为空，会自动使用配置文件同级的 `output/`，创建目录并写回配置；根目录 `output/` 不提交。
 - 保存 JSON 时使用 UTF-8、`ensure_ascii=False`、缩进格式，并优先保持原子写入模式：先写临时文件，再 `os.replace()`。
 
 参考文件：
@@ -63,6 +64,11 @@ API 返回给前端时使用 camelCase，并隐藏密钥正文：
 - `角色库/<分类>/<角色名>.txt`
 
 API 当前固定支持的核心项目文件映射在 `app/api/server.py` 的 `CORE_PROJECT_FILES`。新增项目文件接口时先扩展该映射和测试，不要在页面里硬编码文件路径。
+
+当前本地 API 暴露给前端的项目/知识库列表是文件系统视图：
+
+- `GET /api/projects` 返回当前配置对应的单项目摘要，章节完成数来自输出目录下的 `chapter_<数字>.txt`。
+- `GET /api/knowledge` 汇总 `vectorstore/imported/` 下的导入文件和 `角色库/<分类>/<角色名>.txt` 角色文件。
 
 ## 向量库和知识库
 

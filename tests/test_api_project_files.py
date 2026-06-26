@@ -66,15 +66,22 @@ def test_project_file_endpoint_saves_core_file_in_active_output_path(tmp_path):
     assert (output_path / "global_summary.txt").read_text(encoding="utf-8") == "全局摘要\n第二行"
 
 
-def test_project_files_endpoint_requires_output_path(tmp_path):
+def test_project_files_endpoint_uses_default_output_path_when_missing(tmp_path):
     config_file = tmp_path / "config.json"
     write_config(config_file, "")
     client = TestClient(create_app(config_file=str(config_file)))
 
     response = client.get("/api/project-files")
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "请先设置项目输出路径"
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [
+        "novelSetting",
+        "novelDirectory",
+        "characterState",
+        "globalSummary",
+    ]
+    assert all(item["exists"] is False for item in response.json())
+    assert (tmp_path / "output").is_dir()
 
 
 def test_project_file_endpoint_rejects_unknown_file_id(tmp_path):
