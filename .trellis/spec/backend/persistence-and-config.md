@@ -1,0 +1,93 @@
+# Persistence And Config
+
+当前项目没有数据库或 ORM。持久化由根目录 `config.json`、用户输出目录中的文本文件、角色库目录、WebDAV 远程配置备份和 Chroma `vectorstore/` 组成。后续架构计划会引入 SQLite，但在真正落地前不要编写假迁移或数据库规范。
+
+## 本地配置
+
+- 默认配置文件是项目根目录 `config.json`，已被 `.gitignore` 忽略，禁止提交。
+- 旧 GUI 通过 `config_manager.py` 读写配置；如果文件不存在，`create_config()` 会写入默认结构。
+- FastAPI 本地 API 默认读写同一个 `config.json`，测试中通过 `create_app(config_file=tmp_path / "config.json")` 隔离真实配置。
+- 保存 JSON 时使用 UTF-8、`ensure_ascii=False`、缩进格式，并优先保持原子写入模式：先写临时文件，再 `os.replace()`。
+
+参考文件：
+
+- `config_manager.py`
+- `app/api/server.py`
+- `tests/test_api_project_config.py`
+- `tests/test_api_model_settings.py`
+
+## 配置兼容规则
+
+`config.json` 的 legacy 字段仍是源数据格式：
+
+- `other_params.filepath`
+- `other_params.topic`
+- `other_params.genre`
+- `other_params.num_chapters`
+- `other_params.word_number`
+- `other_params.chapter_num`
+- `llm_configs`
+- `embedding_configs`
+- `choose_configs`
+- `proxy_setting`
+- `webdav_config`
+
+API 返回给前端时使用 camelCase，并隐藏密钥正文：
+
+- `apiKey` 返回空字符串
+- `hasApiKey` 表示是否已保存密钥
+- 保存时空 `apiKey` 应保留同名旧密钥
+- WebDAV 密码同理使用 `password` + `hasPassword`
+
+修改配置字段时必须同步：
+
+- Pydantic model
+- legacy config merge/from 函数
+- 前端 `frontend/src/services/types.ts`
+- `serviceBridge.ts` 调用处
+- pytest 断言
+- `AGENTS.md` 中项目级说明，如该信息会被下次复用
+
+## 输出目录文件
+
+输出目录来自 `config.json` 的 `other_params.filepath`。常见文件包括：
+
+- `Novel_setting.txt`
+- `Novel_directory.txt`
+- `chapter_<数字>.txt`
+- `outline_<数字>.txt`
+- `global_summary.txt`
+- `character_state.txt`
+- `plot_arcs.txt`
+- `vectorstore/`
+- `角色库/<分类>/<角色名>.txt`
+
+API 当前固定支持的核心项目文件映射在 `app/api/server.py` 的 `CORE_PROJECT_FILES`。新增项目文件接口时先扩展该映射和测试，不要在页面里硬编码文件路径。
+
+## 向量库和知识库
+
+- 向量库默认在当前输出目录的 `vectorstore/`。
+- 切换 Embedding 模型后建议清空 `vectorstore/`，避免旧向量污染检索。
+- 知识导入接口当前把本地文件复制到 `vectorstore/imported/`。
+- 清理向量库会删除整个 `vectorstore/`，因此 UI 和 API 文案必须明确这是破坏性操作。
+
+参考文件：
+
+- `novel_generator/vectorstore_utils.py`
+- `novel_generator/knowledge.py`
+- `app/api/server.py`
+- `tests/test_api_knowledge_tools.py`
+
+## WebDAV
+
+- WebDAV 配置写在 `config.json.webdav_config`。
+- API 备份/恢复使用远程 `AI_Novel_Generator/config.json`。
+- 恢复前应在本地 `backup/` 下创建 `config_*_bak.json`。
+- 网络请求使用有限超时，当前 API 约定为 `REQUEST_TIMEOUT = (5, 30)`。
+
+## 禁止事项
+
+- 不提交 `config.json`、`backup/`、`vectorstore/`、生成小说正文或真实密钥。
+- 不把前端保存类操作静默落到 mock 数据；保存应走本地 API。
+- 不在未完成 SQLite milestone 前新增伪数据库层或迁移目录。
+- 不让测试读写真实根目录 `config.json`，必须使用临时路径。
