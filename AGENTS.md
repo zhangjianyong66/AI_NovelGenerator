@@ -10,6 +10,7 @@
 - 输出路径由 GUI 中的 `filepath` 参数决定；常见生成物包括 `Novel_setting.txt`、`Novel_directory.txt`、`chapter_X.txt`、`outline_X.txt`、`global_summary.txt`、`character_state.txt`、`plot_arcs.txt` 和 `vectorstore/`。
 - 使用本地 Ollama Embedding 时，需要先启动 Ollama 并拉取模型，例如 `ollama serve` 和 `ollama pull nomic-embed-text`。
 - 切换不同 Embedding 模型后，建议清空 `vectorstore/`，避免旧向量库影响检索。
+- 项目功能地图与前端验收剧本放在 `docs/feature-map-and-acceptance.md`；不熟悉原项目或验收新前端时先阅读该文档，确认旧 GUI、新前端和本地 API 的职责边界。
 - UI 字体与控件缩放集中定义在 `ui/styles.py`；新增或调整 CustomTkinter 界面时优先使用 `UI_FONT`、`EDITOR_FONT`、`SMALL_FONT`、`BOLD_FONT`、`TITLE_FONT` 和 `WIDGET_SCALING`，避免重新散落硬编码字体元组。该模块会按系统选择中文字体，Linux/Ubuntu 优先使用 `Noto Sans CJK SC` 等中文字体，Windows 优先使用 `Microsoft YaHei`。
 - `frontend/` 是与现有 Python GUI 并行演进的 Tauri 2 + Vue 3 + TypeScript + Vite 前端工程；不会替代 `python main.py`。
 - 前端依赖通过 `cd frontend && npm install` 安装；常用命令包括 `npm run dev`、`npm run typecheck`、`npm run build` 和 `npm run tauri:dev`。

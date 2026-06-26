@@ -38,3 +38,11 @@ python main.py
 - 后端不可用时，读类数据允许降级到 `src/services/mockApi.ts` 展示；真实保存类操作应走本地 API。
 - 当前本地 API 已覆盖项目配置、模型设置、核心项目文件、章节、生成任务、知识工具、角色库和 WebDAV 配置。
 - 生成任务接口当前返回排队状态和日志，尚未接入真实 LLM 执行器。
+
+## 验收参考
+
+新接手项目或验收前端时，先阅读：
+
+- [`../docs/feature-map-and-acceptance.md`](../docs/feature-map-and-acceptance.md)
+
+该文档说明旧 GUI、新前端和本地 API 的职责边界，并提供无 API Key 冒烟验收与真实 LLM 完整验收清单。

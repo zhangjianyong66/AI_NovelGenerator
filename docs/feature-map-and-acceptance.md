@@ -1,0 +1,319 @@
+# 项目功能地图与前端验收剧本
+
+本文面向刚接手项目的开发者和维护者。目标不是替代完整用户手册，而是帮助你快速判断：
+
+- 这个项目有哪些核心功能。
+- 旧 Python GUI、新 Tauri/Vue 前端、本地 FastAPI 各自负责什么。
+- 新前端哪些能力可以真实验收，哪些只是下一代 UI 壳层。
+- 如何用临时输出目录做一轮不依赖 API Key 的冒烟验收。
+
+## 一句话定位
+
+AI Novel Generator 是一个本地优先的长篇小说生成工具。旧入口 `python main.py` 负责完整生成流程；新前端 `frontend/` 负责下一代桌面 UI、配置管理、文件编辑、知识库/角色库管理和生成任务壳层。
+
+## 入口与边界
+
+| 层 | 启动方式 | 当前职责 | 验收重点 |
+| --- | --- | --- | --- |
+| 旧 Python GUI | `python main.py` | 完整小说生成、定稿、审校、知识库导入、角色库管理、WebDAV | 真实 LLM/Embedding 流程是否可跑通 |
+| 本地 FastAPI | `uvicorn app.api.server:app --reload --host 127.0.0.1 --port 8000` | 给新前端提供配置、文件、章节、知识库、角色库、WebDAV 和生成任务接口 | API 是否按 `config.json` 和输出目录读写文件 |
+| 新 Tauri/Vue 前端 | `cd frontend && npm run dev` 或 `./scripts/dev.sh` | 下一代 UI，围绕项目、工作台、章节编辑、生成任务、知识库、设置组织操作 | 页面是否能正确读写本地 API，是否准确呈现当前能力边界 |
+
+联调推荐从项目根目录运行：
+
+```bash
+./scripts/dev.sh
+```
+
+脚本会同时启动后端和前端，默认地址是：
+
+- 后端：`http://127.0.0.1:8000`
+- 前端：`http://127.0.0.1:1420`
+
+如需手动启动：
+
+```bash
+uvicorn app.api.server:app --reload --host 127.0.0.1 --port 8000
+cd frontend
+npm run dev
+```
+
+## 核心功能地图
+
+| 功能 | 用户目标 | 旧 GUI | 新前端 | 本地 API 边界 | 冒烟验收方法 |
+| --- | --- | --- | --- | --- | --- |
+| 项目参数 | 设置题材、类型、章节数、字数、当前章节和输出目录 | 完整支持 | 真实支持 | `GET/PUT /api/project-config` 读写 `config.json` | 在设置页保存临时输出目录和示例参数 |
+| 模型配置 | 管理 LLM、Embedding、代理、阶段模型 | 完整支持 | 真实支持配置保存；LLM 测试只检查字段 | `GET/PUT /api/model-settings`，`POST /api/model-settings/test-llm` | 保存一个测试配置，不填真实密钥时应提示缺少 API Key |
+| 小说设定生成 | 生成 `Novel_setting.txt` | 完整支持 | 仅创建排队任务，不执行 LLM | `POST /api/generation-jobs` 返回 `queued` | 生成任务日志应出现等待执行器接入 |
+| 章节目录生成 | 生成 `Novel_directory.txt` | 完整支持 | 仅创建排队任务，不执行 LLM | 同上 | 只验收任务创建，不验收文件生成 |
+| 章节草稿生成 | 生成 `outline_X.txt` 和 `chapter_X.txt` | 完整支持 | 仅创建排队任务；要求对应 `chapter_X.txt` 已存在 | 同上，`draft` 会检查章节文件 | 先手动准备 `chapter_1.txt`，再创建草稿任务 |
+| 章节定稿 | 更新章节、摘要、角色状态、剧情要点和向量库 | 完整支持 | 仅创建排队任务；不更新文件 | 同上，`finalization` 会检查章节文件 | 只验收任务日志，不期待文件变化 |
+| 一致性审校 | 检查章节逻辑冲突 | 完整支持 | 仅创建排队任务；不执行审校 | 同上，`consistency` 会检查章节文件 | 只验收任务日志，不期待审校结果 |
+| 核心项目文件 | 查看/编辑设定、目录、角色状态、全局摘要 | 支持 | 真实支持 | `GET /api/project-files`，`PUT /api/project-files/{file_id}` | 在工作台或章节相关页面编辑测试文本并检查文件落盘 |
+| 章节编辑 | 查看/编辑 `chapter_X.txt` | 支持 | 真实支持已存在章节文件 | `GET /api/projects/{project_id}/chapters`，`PUT /api/chapters/{chapter_number}` | 准备 `chapter_1.txt`，编辑保存后检查文件内容 |
+| 知识文件 | 导入参考资料并参与检索 | 完整支持，真实写入向量库 | 当前导入只是复制文件到 `vectorstore/imported/` | `POST /api/knowledge/import` | 用测试 txt 导入，检查文件被复制 |
+| 向量库清理 | 切换 Embedding 后清理旧向量库 | 支持 | 真实删除 `vectorstore/` | `POST /api/knowledge/clear-vectorstore` | 只在临时输出目录测试 |
+| 剧情要点 | 查看 `plot_arcs.txt` | 支持 | 真实读取 | `GET /api/knowledge/plot-arcs` | 准备测试 `plot_arcs.txt` 后查看 |
+| 角色库 | 管理 `角色库/<分类>/<角色名>.txt` | 完整支持，包括较复杂的角色导入/分析 | 支持角色文件导入、查看、保存、写入涉及角色 | `GET/PUT /api/roles/...`，`POST /api/roles/import` | 准备角色 txt，导入后编辑保存 |
+| WebDAV | 备份/恢复 `config.json` | 支持 | 支持配置保存、连接测试、备份、恢复 | `GET/PUT /api/webdav-config`，`POST /api/webdav/*` | 无 API Key 冒烟只保存配置，不测试真实远程 |
+
+重要边界：新前端生成任务接口当前只返回 `queued` 状态和日志，后端日志会说明任务已创建、等待执行器接入。这不是小说生成成功，也不会调用 LLM。
+
+## 输出文件速查表
+
+| 文件或目录 | 用途 | 主要生成来源 | 新前端能否编辑 | 验收注意事项 |
+| --- | --- | --- | --- | --- |
+| `Novel_setting.txt` | 小说设定、世界观、角色动力学、剧情架构 | 旧 GUI Step1 生成架构 | 可以作为核心项目文件编辑 | 新前端不会自动生成，只能编辑已有或手动创建内容 |
+| `Novel_directory.txt` | 全书章节标题和章节提示 | 旧 GUI Step2 生成目录 | 可以作为核心项目文件编辑 | 章节列表会尝试从这里补标题和简介 |
+| `chapter_X.txt` | 第 X 章正文 | 旧 GUI Step3 草稿和 Step4 定稿 | 可以编辑已存在章节 | 新前端保存章节要求文件已存在 |
+| `outline_X.txt` | 第 X 章大纲 | 旧 GUI Step3 草稿 | 当前不是核心编辑文件 | 冒烟验收不要求检查 |
+| `global_summary.txt` | 前文全局摘要 | 旧 GUI Step4 定稿 | 可以作为核心项目文件编辑 | 真实更新仍依赖旧 GUI 定稿流程 |
+| `character_state.txt` | 角色状态和关系变化 | 旧 GUI Step1/Step4 或角色工具 | 可以作为核心项目文件编辑 | 旧角色库可从此文件分析角色 |
+| `plot_arcs.txt` | 剧情要点、伏笔、冲突记录 | 旧 GUI 定稿/审校相关流程 | 新前端知识库页只读展示 | 文件不存在时应显示空状态 |
+| `vectorstore/` | 向量检索库和导入资料 | 旧 GUI 知识库导入和定稿更新 | 新前端可导入文件和清空目录 | 清空是破坏性操作，只在临时目录测试 |
+| `vectorstore/imported/` | 新前端导入知识文件的落盘位置 | 新前端知识库导入 | 不直接编辑 | 当前只是复制文件，不代表已完成向量化 |
+| `角色库/<分类>/<角色名>.txt` | 角色资料库 | 旧 GUI 角色库或新前端导入/保存 | 可以查看和保存 | 文件名和分类名会做路径安全校验 |
+| `config.json` | 本地配置、密钥、模型、输出路径、WebDAV | GUI/API 自动读写 | 通过设置页间接编辑 | 已被 `.gitignore` 忽略，不应提交 |
+| `backup/config_*_bak.json` | WebDAV 恢复前的本地配置备份 | WebDAV 恢复流程 | 不编辑 | 恢复配置属于高风险操作 |
+
+## 安全验收约定
+
+冒烟验收前先创建临时输出目录，避免污染真实小说工程：
+
+```bash
+mkdir -p /tmp/ai-novel-acceptance
+```
+
+不要在验收中提交或泄露：
+
+- `config.json`
+- API Key
+- 真实账号、真实 WebDAV 密码、私有 Base URL
+- 真实生成的大体积小说正文
+- `vectorstore/` 向量库数据
+
+操作风险分级：
+
+| 风险级别 | 操作 | 建议 |
+| --- | --- | --- |
+| 只读检查 | 打开页面、读取配置、读取项目文件、查看章节、查看任务日志 | 可以随时做 |
+| 可逆写入 | 保存临时输出目录、保存测试文本、导入测试知识文件、导入/保存测试角色 | 只在临时输出目录做 |
+| 谨慎操作 | 覆盖已有章节或核心项目文件 | 先备份或只操作测试文件 |
+| 破坏性操作 | 清空 `vectorstore/`、WebDAV 恢复配置 | 只在临时目录或明确备份后做 |
+
+## 无 API Key 前端冒烟验收
+
+这套验收不依赖真实 LLM、真实 Embedding、真实 WebDAV 服务或远程账号。目标是确认新前端和本地 API 的配置、文件读写、页面状态能跑通。
+
+### 1. 准备临时数据
+
+在临时输出目录创建测试文件：
+
+```bash
+mkdir -p /tmp/ai-novel-acceptance/角色库/主角
+cat > /tmp/ai-novel-acceptance/Novel_setting.txt <<'EOF'
+测试小说设定：一座靠记忆交易运转的港城。
+EOF
+cat > /tmp/ai-novel-acceptance/Novel_directory.txt <<'EOF'
+第1章：雾港来信
+主角收到一封来自失踪调查员的信。
+EOF
+cat > /tmp/ai-novel-acceptance/chapter_1.txt <<'EOF'
+第一章测试正文。
+EOF
+cat > /tmp/ai-novel-acceptance/global_summary.txt <<'EOF'
+当前没有前文摘要。
+EOF
+cat > /tmp/ai-novel-acceptance/character_state.txt <<'EOF'
+主角：尚未登场。
+EOF
+cat > /tmp/ai-novel-acceptance/plot_arcs.txt <<'EOF'
+伏笔：失踪调查员留下的信。
+EOF
+cat > /tmp/ai-novel-acceptance/角色库/主角/林澈.txt <<'EOF'
+角色名称：林澈
+身份：港城档案员
+目标：找回被交易的记忆
+EOF
+cat > /tmp/ai-novel-acceptance/knowledge-note.txt <<'EOF'
+港城知识：记忆可以被典当，但典当者会遗忘相关情感。
+EOF
+```
+
+### 2. 启动联调环境
+
+```bash
+./scripts/dev.sh
+```
+
+如果脚本提示缺少前端依赖，先运行：
+
+```bash
+cd frontend
+npm install
+```
+
+### 3. 设置页验收
+
+打开前端后进入“设置”页：
+
+- 项目参数页签：把输出目录设置为 `/tmp/ai-novel-acceptance`。
+- 题材填写“记忆交易港城”。
+- 类型填写“悬疑奇幻”。
+- 章节数填写 `3`，每章字数填写 `1200`，当前章节填写 `1`。
+- 保存后刷新页面，确认配置仍能读回。
+- LLM 页签可以保留空密钥；测试配置应提示缺少 API Key，而不是假装真实调用成功。
+
+验收标准：
+
+- 保存操作不报错。
+- `config.json` 未被提交。
+- 前端仍显示真实后端连接状态；如果后端停掉，读类数据可能回退到 mock，但保存类操作应失败。
+
+### 4. 项目和工作台验收
+
+进入“项目”和“工作台”：
+
+- 项目页能显示当前项目摘要。
+- 工作台左侧能看到核心项目文件和章节。
+- 打开 `Novel_setting.txt`，追加一行“验收标记：工作台保存测试。”并保存。
+- 回到终端检查 `/tmp/ai-novel-acceptance/Novel_setting.txt` 是否已包含该标记。
+- 选择第 1 章，追加一行“验收标记：章节保存测试。”并保存。
+- 检查 `/tmp/ai-novel-acceptance/chapter_1.txt` 是否已包含该标记。
+
+验收标准：
+
+- 工作台不应出现横向滚动导致内容不可达。
+- 保存后文件真实落盘。
+- 切换文件或章节时，未保存状态应有提示或保护。
+
+### 5. 章节编辑页验收
+
+进入“章节编辑”页：
+
+- 列表中应能看到第 1 章。
+- 打开章节正文，修改一小段测试文本并保存。
+- 检查 `chapter_1.txt` 是否被更新。
+
+验收标准：
+
+- 已存在章节可编辑和保存。
+- 不要求新前端创建不存在的 `chapter_2.txt`。
+
+### 6. 生成任务页验收
+
+进入“生成任务”页：
+
+- 创建“生成小说设定”任务。
+- 创建“生成章节草稿”任务，当前章节应为 `1`，且 `chapter_1.txt` 已存在。
+- 查看任务列表和详情日志。
+
+验收标准：
+
+- 任务状态是 `queued`。
+- 日志包含“任务已创建，等待执行器接入”或等价信息。
+- 不应期待 `Novel_setting.txt`、`chapter_1.txt`、`global_summary.txt` 等文件自动变化。
+- 如果删除 `chapter_1.txt` 后创建草稿、定稿或审校任务，后端应返回章节文件不存在。
+
+### 7. 知识库页验收
+
+进入“知识库”页：
+
+- 知识文件页签中导入 `/tmp/ai-novel-acceptance/knowledge-note.txt`。
+- 检查文件是否复制到 `/tmp/ai-novel-acceptance/vectorstore/imported/knowledge-note.txt`。
+- 剧情要点页签应显示 `plot_arcs.txt` 的内容。
+- 角色库页签应显示 `主角/林澈.txt`。
+- 修改角色内容并保存，检查角色文件真实更新。
+- 使用“写入章节参数”后，到设置页检查“涉及角色”是否更新。
+
+验收标准：
+
+- 知识导入只是复制文件，不代表完成真实向量化。
+- 角色文件可以导入、读取和保存。
+- 不要在真实项目上点击清空向量库。
+
+### 8. WebDAV 页签验收
+
+无 API Key 冒烟只做配置保存：
+
+- 填写明显的测试 URL，例如 `https://example.invalid/webdav/`。
+- 填写测试用户名。
+- 保存配置。
+
+验收标准：
+
+- 保存配置可用。
+- 不点击恢复配置。
+- 不要求连接测试、备份、恢复成功，因为这些需要真实 WebDAV 服务。
+
+## 真实 LLM/Embedding 完整验收
+
+这套验收用于旧 GUI，或未来新前端生成任务接入真实执行器之后。执行前需要有效 LLM 配置和可用 Embedding。
+
+建议参数：
+
+- 输出目录：新的空目录。
+- 主题：`一座靠记忆交易维持秩序的港城，主角追查一封来自失踪调查员的信。`
+- 类型：`悬疑奇幻`
+- 章节数：`3`
+- 每章字数：`800-1500`
+- 当前章节：`1`
+
+旧 GUI 主流程：
+
+1. 运行 `python main.py`。
+2. 设置 LLM、Embedding、输出目录和小说参数。
+3. 执行 Step1 生成架构，确认生成 `Novel_setting.txt` 和初始 `character_state.txt`。
+4. 执行 Step2 生成目录，确认生成 `Novel_directory.txt`。
+5. 执行 Step3 生成第 1 章草稿，确认生成 `outline_1.txt` 和 `chapter_1.txt`。
+6. 执行 Step4 定稿章节，确认 `global_summary.txt`、`character_state.txt`、`plot_arcs.txt` 和 `vectorstore/` 有更新。
+7. 可选执行一致性审校，确认日志输出审校结果或无冲突提示。
+8. 可选导入知识库，确认后续章节生成能参考相关资料。
+
+真实验收标准：
+
+- LLM 调用失败时有清晰错误日志。
+- 每一步生成的文件存在且内容非空。
+- 定稿后状态文件和向量库发生合理更新。
+- 切换 Embedding 模型后，应清空旧 `vectorstore/` 再重新导入或生成。
+
+## 常见失败与排查
+
+| 现象 | 可能原因 | 处理方式 |
+| --- | --- | --- |
+| 前端显示 mock 数据 | 后端未启动或 `VITE_API_BASE_URL` 指错 | 用 `./scripts/dev.sh` 启动，或检查 `http://127.0.0.1:8000/health` |
+| 保存配置失败 | 保存类操作不走 mock，必须有真实后端 | 启动本地 API 后重试 |
+| 章节列表为空 | 输出目录没有 `chapter_X.txt` | 在临时目录创建 `chapter_1.txt` |
+| 创建草稿/定稿/审校任务失败 | 当前章节号无效或章节文件不存在 | 设置当前章节为 `1` 并准备 `chapter_1.txt` |
+| 生成任务一直是 `queued` | 当前接口尚未接入真实执行器 | 这是预期行为，不代表生成失败 |
+| 知识导入后没有真实检索效果 | 新前端导入只是复制到 `vectorstore/imported/` | 真实向量化仍依赖旧 GUI 知识库流程或后续执行器接入 |
+| WebDAV 测试失败 | URL、账号、密码或远程服务不可用 | 无 API Key 冒烟阶段不要求测试成功 |
+| WebDAV 恢复后配置变化 | 恢复会覆盖本地 `config.json` | 仅在确认远程配置正确且本地已备份后执行 |
+
+## 验收结论模板
+
+```text
+验收日期：
+分支/提交：
+启动方式：
+输出目录：
+
+无 API Key 冒烟：
+- 设置页：
+- 工作台：
+- 章节编辑：
+- 生成任务：
+- 知识库：
+- WebDAV 配置保存：
+
+真实 LLM 验收：
+- 是否执行：
+- 模型/Embedding：
+- Step1：
+- Step2：
+- Step3：
+- Step4：
+- 一致性审校：
+
+遗留问题：
+```
