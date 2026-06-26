@@ -1,15 +1,47 @@
 <template>
-  <div class="app-shell">
+  <div
+    class="app-shell"
+    :class="{
+      'app-shell--nav-collapsed': isNavCollapsed,
+      'app-shell--context-collapsed': isContextCollapsed,
+    }"
+  >
     <header class="topbar">
       <div>
         <p class="eyebrow">AI Novel Generator</p>
         <h1>{{ currentTitle }}</h1>
       </div>
-      <div class="topbar-status">
-        <span class="status-dot" :class="bridgeStatus.mode" />
-        <span>{{ bridgeModeLabel }}</span>
-        <span class="divider" />
-        <span>{{ activeProject?.title ?? '未选择项目' }}</span>
+      <div class="topbar-right">
+        <div class="layout-controls" aria-label="布局控制">
+          <button
+            class="layout-toggle"
+            type="button"
+            :aria-pressed="isNavCollapsed"
+            :aria-label="isNavCollapsed ? '展开主导航' : '折叠主导航'"
+            :title="isNavCollapsed ? '展开主导航' : '折叠主导航'"
+            @click="toggleNav"
+          >
+            <PanelLeftClose v-if="!isNavCollapsed" :size="18" />
+            <PanelLeftOpen v-else :size="18" />
+          </button>
+          <button
+            class="layout-toggle"
+            type="button"
+            :aria-pressed="isContextCollapsed"
+            :aria-label="isContextCollapsed ? '展开项目状态栏' : '折叠项目状态栏'"
+            :title="isContextCollapsed ? '展开项目状态栏' : '折叠项目状态栏'"
+            @click="toggleContext"
+          >
+            <PanelRightClose v-if="!isContextCollapsed" :size="18" />
+            <PanelRightOpen v-else :size="18" />
+          </button>
+        </div>
+        <div class="topbar-status">
+          <span class="status-dot" :class="bridgeStatus.mode" />
+          <span>{{ bridgeModeLabel }}</span>
+          <span class="divider" />
+          <span>{{ activeProject?.title ?? '未选择项目' }}</span>
+        </div>
       </div>
     </header>
 
@@ -17,7 +49,7 @@
       <nav aria-label="主导航">
         <RouterLink v-for="item in navItems" :key="item.to" :to="item.to" class="nav-item">
           <component :is="item.icon" :size="18" />
-          <span>{{ item.label }}</span>
+          <span class="nav-label">{{ item.label }}</span>
         </RouterLink>
       </nav>
     </aside>
@@ -75,6 +107,10 @@ import {
   Brain,
   FolderKanban,
   Library,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   PenLine,
   Settings,
   Sparkles,
@@ -93,6 +129,29 @@ const projectsStore = useProjectsStore()
 const editorStore = useEditorStore()
 const generationStore = useGenerationStore()
 const bridgeStatus = ref<ServiceBridgeStatus>({ ...serviceBridge.getStatus() })
+const layoutStorageKeys = {
+  navCollapsed: 'ai-novel-generator.layout.navCollapsed',
+  contextCollapsed: 'ai-novel-generator.layout.contextCollapsed',
+} as const
+
+const readLayoutPreference = (key: string) => {
+  try {
+    return window.localStorage.getItem(key) === 'true'
+  } catch {
+    return false
+  }
+}
+
+const writeLayoutPreference = (key: string, value: boolean) => {
+  try {
+    window.localStorage.setItem(key, String(value))
+  } catch {
+    // Layout persistence is a convenience; ignore storage failures.
+  }
+}
+
+const isNavCollapsed = ref(readLayoutPreference(layoutStorageKeys.navCollapsed))
+const isContextCollapsed = ref(readLayoutPreference(layoutStorageKeys.contextCollapsed))
 
 const { activeProject } = storeToRefs(projectsStore)
 const { activeChapter } = storeToRefs(editorStore)
@@ -126,6 +185,16 @@ const syncBridgeStatus = () => {
   bridgeStatus.value = { ...serviceBridge.getStatus() }
 }
 
+const toggleNav = () => {
+  isNavCollapsed.value = !isNavCollapsed.value
+  writeLayoutPreference(layoutStorageKeys.navCollapsed, isNavCollapsed.value)
+}
+
+const toggleContext = () => {
+  isContextCollapsed.value = !isContextCollapsed.value
+  writeLayoutPreference(layoutStorageKeys.contextCollapsed, isContextCollapsed.value)
+}
+
 onMounted(async () => {
   await serviceBridge.checkHealth()
   syncBridgeStatus()
@@ -155,6 +224,18 @@ watch(
     "sidebar content context";
 }
 
+.app-shell--nav-collapsed {
+  grid-template-columns: 64px minmax(0, 1fr) 300px;
+}
+
+.app-shell--context-collapsed {
+  grid-template-columns: 220px minmax(0, 1fr) 0;
+}
+
+.app-shell--nav-collapsed.app-shell--context-collapsed {
+  grid-template-columns: 64px minmax(0, 1fr) 0;
+}
+
 .topbar {
   grid-area: topbar;
   display: flex;
@@ -163,6 +244,37 @@ watch(
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
   padding: 0 24px;
+}
+
+.topbar-right {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 14px;
+}
+
+.layout-controls {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.layout-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.layout-toggle:hover,
+.layout-toggle[aria-pressed="true"] {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-strong);
 }
 
 .topbar h1 {
@@ -182,9 +294,11 @@ watch(
 .topbar-status {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
   gap: 10px;
   color: var(--color-text-muted);
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .status-dot {
@@ -213,6 +327,7 @@ watch(
   border-right: 1px solid var(--color-border);
   background: #fbfcfd;
   padding: 16px 12px;
+  overflow: hidden;
 }
 
 .sidebar nav {
@@ -232,6 +347,24 @@ watch(
   font-weight: 600;
 }
 
+.app-shell--nav-collapsed .sidebar {
+  padding: 16px 10px;
+}
+
+.app-shell--nav-collapsed .nav-item {
+  justify-content: center;
+  padding: 0;
+}
+
+.app-shell--nav-collapsed .nav-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .nav-item.router-link-active {
   background: #e3f1f2;
   color: var(--color-primary-strong);
@@ -240,7 +373,8 @@ watch(
 .content {
   grid-area: content;
   min-width: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 22px;
 }
 
@@ -252,6 +386,13 @@ watch(
   border-left: 1px solid var(--color-border);
   background: #fbfcfd;
   padding: 18px;
+  overflow: hidden;
+}
+
+.app-shell--context-collapsed .context-panel {
+  border-left: 0;
+  padding: 0;
+  visibility: hidden;
 }
 
 .context-section {
@@ -296,5 +437,51 @@ watch(
   height: 100%;
   border-radius: inherit;
   background: var(--color-primary);
+}
+
+@media (max-width: 1180px) {
+  .app-shell {
+    grid-template-columns: 64px minmax(0, 1fr) 0;
+  }
+
+  .sidebar {
+    padding: 16px 10px;
+  }
+
+  .nav-item {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .nav-label,
+  .context-panel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .context-panel {
+    border-left: 0;
+    padding: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    min-height: 86px;
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+  }
+
+  .topbar-status {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
 }
 </style>

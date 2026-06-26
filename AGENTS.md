@@ -19,6 +19,7 @@
 - 前端写作编辑相关业务组件放在 `frontend/src/features/writing/`；`WritingEditor` 是章节正文和核心项目文件编辑的适配层，第一阶段底层仍是增强版 `textarea`，页面不应直接依赖底层编辑器实现。
 - 前端主导航顺序按写作流程组织为：项目 → 工作台 → 章节编辑 → 生成任务 → 知识库 → 设置；页面标题和信息架构应继续遵循该流程。
 - 工作台页使用 `features/writing` 中的 `WorkbenchLayout` 三轨结构：左轨放项目文件和章节导航，中间放 `WritingEditor`，右轨放上下文资料、生成动作、任务状态和日志摘要；Tauri 窗口 `minWidth` 当前为 900，以支持窄桌面降级。
+- 全局应用壳层 `frontend/src/layouts/AppLayout.vue` 支持左侧主导航和右侧项目状态栏折叠；左侧折叠后保留 64px 图标栏，右侧折叠后隐藏项目状态栏。折叠偏好保存在浏览器 `localStorage`，key 为 `ai-novel-generator.layout.navCollapsed` 和 `ai-novel-generator.layout.contextCollapsed`。
 - 前端生成任务业务组件放在 `frontend/src/features/generation/`，当前包括生成动作组、任务列表和任务详情/日志查看；知识库业务组件放在 `frontend/src/features/knowledge/`，当前包括知识文件列表和角色库编辑器。生成页、知识库页应优先复用这些 feature 组件，避免在页面内重复维护任务状态标签、日志查看、角色列表和角色编辑模板。
 - 设置页按 tabs 分组为项目参数、LLM、Embedding、阶段模型/代理、WebDAV；知识库页按 tabs 分组为知识文件、剧情要点、角色库；生成页分为任务创建、批量参数、任务列表、任务详情/日志区域。
 - `app/api/server.py` 是前端真实接入使用的本地 FastAPI 最小服务边界；开发时可用 `uvicorn app.api.server:app --reload --host 127.0.0.1 --port 8000` 启动本地 API。

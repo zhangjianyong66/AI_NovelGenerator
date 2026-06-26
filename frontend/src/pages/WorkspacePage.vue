@@ -11,7 +11,7 @@
       </template>
     </PageHeader>
 
-    <div class="grid three">
+    <div class="grid three workspace-metrics">
       <MetricTile label="当前章节" :value="activeChapter ? `第 ${activeChapter.order} 章` : '-'" />
       <MetricTile label="运行任务" :value="runningJob?.title ?? '无'" />
       <MetricTile label="当前文件字数" :value="activeProjectFileWordCount" />
@@ -214,6 +214,14 @@ const saveActiveProjectFile = async () => {
   min-height: 640px;
 }
 
+.editor-shell .panel-body {
+  padding: var(--space-6);
+}
+
+.workspace-metrics {
+  gap: var(--space-5);
+}
+
 .file-list,
 .chapter-list,
 .generation-actions {
@@ -226,6 +234,7 @@ const saveActiveProjectFile = async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
   min-height: 44px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -233,6 +242,15 @@ const saveActiveProjectFile = async () => {
   background: var(--color-surface);
   color: var(--color-text);
   text-align: left;
+}
+
+.file-tab span,
+.file-tab small,
+.chapter-link span,
+.chapter-link strong,
+.context-meta dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .chapter-link {
@@ -288,11 +306,19 @@ const saveActiveProjectFile = async () => {
   .editor-shell {
     min-height: 560px;
   }
+
+  .workspace-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 960px) {
   .editor-shell {
     min-height: auto;
+  }
+
+  .workspace-metrics {
+    grid-template-columns: 1fr;
   }
 }
 </style>
