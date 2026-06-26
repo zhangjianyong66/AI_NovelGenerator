@@ -74,3 +74,36 @@
 
 - 如需人工验收，重点检查设置页保存、LLM 测试、WebDAV 测试/备份/恢复。
 - 进入 Phase 3.4 提交本轮 Milestone 4-5 累计改动。
+
+
+## Session 3: 前端 UI 重构收尾
+
+**Date**: 2026-06-26
+**Task**: 前端 UI 重构收尾
+**Branch**: `main`
+
+### Summary
+
+补齐本地 API 的前端联调缺口：新增项目列表与知识列表接口、默认 output 输出目录、CORS 支持、联调脚本、测试用例和 Trellis/AGENTS 运行约定；自动验证通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0ae7f16` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
