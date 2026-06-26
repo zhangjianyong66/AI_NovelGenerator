@@ -107,3 +107,58 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: 前端 CDP 验收与 Trellis 收尾
+
+**Date**: 2026-06-26
+**Task**: 前端 CDP 验收与 Trellis 收尾
+**Branch**: `main`
+
+### Summary
+
+使用 cdp-browser-chrome 执行前端联调冒烟验收，补充质量规范中的手工验收边界，并记录本轮测试结果与遗留风险。
+
+### Main Changes
+
+- 使用 `cdp-browser-chrome` 连接系统 Chrome，访问前端联调地址并检查项目、工作台、章节编辑、生成任务、知识库、设置 6 个主路由均可渲染主内容。
+- 默认 `8000` 端口被占用时，改用 `API_PORT=8011 FRONTEND_PORT=1431 ./scripts/dev.sh` 启动联调服务。
+- 在生成任务页点击“设定”，验证可创建“生成小说设定”任务，状态显示为“排队中”。
+- 补充 `.trellis/spec/backend/quality-guidelines.md`，记录 `test-cases.md` 人工验收清单、CDP 冒烟测试边界、破坏性/外部服务项不可由 CDP 替代、900px 响应式需额外可控视口验证。
+
+### Testing
+
+- [OK] `cd frontend && npm run typecheck`
+- [OK] `cd frontend && npm run build`
+- [OK] `python -m pytest tests`，45 passed
+- [OK] `git diff --check`
+- [OK] `git status --short --ignored` 确认 `config.json`、`frontend/dist/`、`frontend/node_modules/` 仍为 ignored
+- [OK] CDP 浏览器冒烟：6 个主路由渲染、本地后端连接、生成任务创建入口可用
+
+### Task / Trellis Status
+
+- 当前 Trellis current task 为 none，本轮没有可归档的当前任务。
+- `00-bootstrap-guidelines` 仍为 `in_progress`，PRD 中还有 bootstrap 复选框，未因本轮验收自动 finish/archive。
+- 本轮通过 `trellis-finish-work` 流程记录 journal；只提交了 spec 更新，不归档长期 bootstrap 任务。
+
+### Remaining Risks
+
+- `test-cases.md` 中 TC-01 到 TC-30 是手工验收清单，本轮未逐项人工执行，不能标记为全量手工通过。
+- CDP MCP 当前没有稳定 viewport resize 能力，TC-29 的约 900px 响应式仍需用可控窗口或其他工具补测。
+- WebDAV 备份/恢复、清理向量库、导入本地知识文件等外部服务或破坏性项本轮未执行，需要人工或隔离环境确认。
+- 工作台截图观察到右侧生成动作区域在当前视口下存在被上下文栏遮挡的视觉风险，后续人工验收需重点复核。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `840cdec` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
