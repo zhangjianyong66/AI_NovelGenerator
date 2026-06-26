@@ -16,10 +16,7 @@
             </button>
           </template>
           <div class="tool-panel">
-            <label>
-              文件路径
-              <input v-model.trim="importPath" placeholder="/path/to/knowledge.txt" />
-            </label>
+            <TextField v-model.trim="importPath" label="文件路径" placeholder="/path/to/knowledge.txt" />
           </div>
         </FormSection>
 
@@ -33,13 +30,7 @@
 
         <FormSection title="文件列表">
           <StatusMessage v-if="files.length === 0" type="empty" message="当前没有可展示的知识文件。" />
-          <article v-for="item in files" :key="item.id" class="knowledge-item">
-            <h4>{{ item.name }}</h4>
-            <p>{{ item.description }}</p>
-            <div class="tag-row">
-              <span v-for="tag in item.tags" :key="tag" class="tag">{{ tag }}</span>
-            </div>
-          </article>
+          <KnowledgeFileList :files="files" />
         </FormSection>
       </div>
 
@@ -59,40 +50,25 @@
           <button class="ghost-button" type="button" @click="applySelectedRoles">写入章节参数</button>
         </template>
         <div class="role-import">
-          <input v-model.trim="roleImportCategory" placeholder="分类" />
-          <input v-model.trim="roleImportPath" placeholder="/path/to/role.txt" />
-          <button class="ghost-button" :disabled="!roleImportCategory || !roleImportPath" type="button" @click="importRole">
+          <TextField v-model.trim="roleImportCategory" label="分类" />
+          <TextField v-model.trim="roleImportPath" label="角色文件路径" placeholder="/path/to/role.txt" />
+          <button
+            class="ghost-button role-import__button"
+            :disabled="!roleImportCategory || !roleImportPath"
+            type="button"
+            @click="importRole"
+          >
             导入
           </button>
         </div>
-        <div class="role-layout">
-          <div class="role-list">
-            <StatusMessage v-if="roleCategories.length === 0" type="empty" message="当前没有角色库文件。" />
-            <div v-for="category in roleCategories" :key="category.name" class="role-category">
-              <h4>{{ category.name }}</h4>
-              <label v-for="role in category.roles" :key="role.id" class="role-row">
-                <input v-model="selectedRoleIds" :value="role.id" type="checkbox" />
-                <button type="button" @click="loadRole(role.category, role.name)">
-                  {{ role.name }}
-                  <small>{{ role.wordCount }} 字</small>
-                </button>
-              </label>
-            </div>
-          </div>
-          <div class="role-editor">
-            <LongTextEditor
-              v-model="roleContent"
-              :title="activeRole?.name ?? '未选择角色'"
-              :disabled="!activeRole"
-              empty-message="请选择一个角色进行查看或编辑。"
-              min-height="300px"
-            >
-              <template #actions>
-                <button class="primary-button" :disabled="!activeRole" type="button" @click="saveRole">保存角色</button>
-              </template>
-            </LongTextEditor>
-          </div>
-        </div>
+        <RoleLibraryEditor
+          v-model:role-content="roleContent"
+          v-model:selected-role-ids="selectedRoleIds"
+          :role-categories="roleCategories"
+          :active-role="activeRole"
+          @load-role="loadRole"
+          @save-role="saveRole"
+        />
       </FormSection>
     </Tabs>
   </section>
@@ -108,6 +84,8 @@ import LongTextEditor from '@/components/ui/LongTextEditor.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import StatusMessage from '@/components/ui/StatusMessage.vue'
 import Tabs from '@/components/ui/Tabs.vue'
+import TextField from '@/components/ui/TextField.vue'
+import { KnowledgeFileList, RoleLibraryEditor } from '@/features/knowledge'
 import { serviceBridge } from '@/services/serviceBridge'
 import type { KnowledgeItem, PlotArcs, RoleCategory, RoleDetail } from '@/services/types'
 
@@ -239,38 +217,23 @@ const applySelectedRoles = async () => {
   gap: 12px;
 }
 
-label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  color: var(--color-text-muted);
-  font-size: 13px;
-}
-
-input {
-  min-height: 36px;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 0 10px;
-  color: var(--color-text);
-}
-
-.knowledge-item {
+.knowledge-list :deep(.knowledge-item) {
   border-top: 1px solid var(--color-border);
   padding: 14px 0;
 }
 
-.knowledge-item:first-of-type {
+.knowledge-list :deep(.knowledge-item:first-of-type) {
   border-top: 0;
   padding-top: 0;
 }
 
-h4 {
+.knowledge-list :deep(h4),
+.role-layout :deep(h4) {
   margin: 0 0 6px;
   font-size: 16px;
 }
 
-p {
+.knowledge-list :deep(p) {
   margin: 0 0 10px;
   color: var(--color-text-muted);
   line-height: 1.6;
@@ -285,32 +248,37 @@ p {
 
 .role-import {
   margin-bottom: 14px;
+  align-items: end;
 }
 
-.role-import input {
+.role-import :deep(.field) {
   flex: 1;
 }
 
-.role-layout {
+.role-import__button {
+  margin-bottom: 0;
+}
+
+:deep(.role-layout) {
   align-items: stretch;
 }
 
-.role-list {
+:deep(.role-list) {
   width: 320px;
   border-right: 1px solid var(--color-border);
   padding-right: 12px;
 }
 
-.role-category h4 {
+:deep(.role-category h4) {
   margin: 0 0 8px;
 }
 
-.role-row {
+:deep(.role-row) {
   align-items: center;
   margin-top: 8px;
 }
 
-.role-row button {
+:deep(.role-row button) {
   display: flex;
   flex: 1;
   align-items: center;
@@ -322,11 +290,11 @@ p {
   color: var(--color-text);
 }
 
-.role-row small {
+:deep(.role-row small) {
   color: var(--color-text-muted);
 }
 
-.role-editor {
+:deep(.role-editor) {
   flex: 1;
   min-width: 0;
 }

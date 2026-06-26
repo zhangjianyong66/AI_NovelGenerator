@@ -86,10 +86,10 @@ npm run build
 
 ## Milestone 4: 推广到章节、生成、知识库
 
-- [ ] 章节页复用 `WritingEditor`、章节导航和保存状态组件。
-- [ ] 生成页拆出 `features/generation` 组件，如生成动作组、任务列表、日志查看。
-- [ ] 知识库页拆出 `features/knowledge` 组件，如角色列表、角色编辑、剧情要点查看。
-- [ ] 消除页面内重复表单/按钮/状态样式。
+- [x] 章节页复用 `WritingEditor`、章节导航和保存状态组件。
+- [x] 生成页拆出 `features/generation` 组件，如生成动作组、任务列表、日志查看。
+- [x] 知识库页拆出 `features/knowledge` 组件，如角色列表、角色编辑、剧情要点查看。
+- [x] 消除页面内重复表单/按钮/状态样式。
 
 验证：
 
@@ -99,18 +99,24 @@ npm run typecheck
 npm run build
 ```
 
+结果：
+
+- 2026-06-26：`npm run typecheck` 通过。
+- 2026-06-26：`npm run build` 通过。
+- 2026-06-26：`git diff --check` 通过。
+
 手动验收：
 
-- 章节页编辑保存正常。
-- 生成任务创建、列表和日志查看正常。
-- 知识库导入、向量库清理、角色查看/保存路径正常。
+- [ ] 章节页编辑保存正常。
+- [ ] 生成任务创建、列表和日志查看正常。
+- [ ] 知识库导入、向量库清理、角色查看/保存路径正常。
 
 ## Milestone 5: 设置页与文档收尾
 
-- [ ] 设置页表单迁移到基础字段组件。
-- [ ] 统一配置测试、保存、WebDAV 备份/恢复的状态呈现。
-- [ ] 更新 `frontend/README.md`，修正 mock-only 旧说明，补充真实 API 与 fallback 说明。
-- [ ] 如实施中发现新的项目运行约定，更新根目录 `AGENTS.md`。
+- [x] 设置页表单迁移到基础字段组件。
+- [x] 统一配置测试、保存、WebDAV 备份/恢复的状态呈现。
+- [x] 更新 `frontend/README.md`，修正 mock-only 旧说明，补充真实 API 与 fallback 说明。
+- [x] 如实施中发现新的项目运行约定，更新根目录 `AGENTS.md`。
 
 验证：
 
@@ -120,6 +126,13 @@ npm run typecheck
 npm run build
 python -m pytest tests
 ```
+
+结果：
+
+- 2026-06-26：`npm run typecheck` 通过。
+- 2026-06-26：`npm run build` 通过。
+- 2026-06-26：`python -m pytest tests` 通过，41 passed。
+- 2026-06-26：`git diff --check` 通过。
 
 ## 风险与回滚点
 

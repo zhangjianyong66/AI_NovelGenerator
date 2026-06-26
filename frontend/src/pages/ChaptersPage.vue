@@ -18,17 +18,11 @@
       <aside class="panel chapter-list">
         <div class="panel-body">
           <h3 class="panel-title">章节列表</h3>
-          <button
-            v-for="chapter in chapters"
-            :key="chapter.id"
-            class="chapter-button"
-            :class="{ active: chapter.id === activeChapter?.id }"
-            type="button"
-            @click="selectChapter(chapter.id)"
-          >
-            <span>第 {{ chapter.order }} 章</span>
-            <strong>{{ chapter.title }}</strong>
-          </button>
+          <ChapterNavigator
+            :chapters="chapters"
+            :active-chapter-id="activeChapter?.id"
+            @select="selectChapter"
+          />
         </div>
       </aside>
 
@@ -78,7 +72,7 @@ import { onBeforeRouteLeave } from 'vue-router'
 import ActionBar from '@/components/ui/ActionBar.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import StatusMessage from '@/components/ui/StatusMessage.vue'
-import { WritingEditor } from '@/features/writing'
+import { ChapterNavigator, WritingEditor } from '@/features/writing'
 import { useEditorStore } from '@/stores/editor'
 import { useProjectsStore } from '@/stores/projects'
 
@@ -156,7 +150,12 @@ onBeforeRouteLeave(() => confirmDirtyNavigation())
   min-height: 580px;
 }
 
-.chapter-button {
+.chapter-navigator {
+  display: grid;
+  gap: 8px;
+}
+
+:deep(.chapter-navigator__item) {
   display: block;
   width: 100%;
   border-radius: 8px;
@@ -166,17 +165,17 @@ onBeforeRouteLeave(() => confirmDirtyNavigation())
   text-align: left;
 }
 
-.chapter-button.active {
+:deep(.chapter-navigator__item.active) {
   background: #e3f1f2;
 }
 
-.chapter-button span {
+:deep(.chapter-navigator__item span) {
   display: block;
   color: var(--color-text-muted);
   font-size: 12px;
 }
 
-.chapter-button strong {
+:deep(.chapter-navigator__item strong) {
   display: block;
   margin-top: 4px;
 }

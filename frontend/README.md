@@ -19,6 +19,12 @@ npm run build
 npm run tauri:dev
 ```
 
+本地真实 API 可在项目根目录启动：
+
+```bash
+uvicorn app.api.server:app --reload --host 127.0.0.1 --port 8000
+```
+
 现有生产 GUI 入口不变：
 
 ```bash
@@ -27,6 +33,8 @@ python main.py
 
 ## 边界
 
-- 当前前端只使用 `src/services/mockApi.ts` 中的 mock 数据。
-- 当前前端不调用 Python 后端、不执行小说生成、不持久化配置、不操作向量库。
-- 后续后端服务化完成后，再将 mock service 替换为本地 API 或 Tauri command。
+- 前端默认通过 `src/services/serviceBridge.ts` 访问 `http://127.0.0.1:8000` 的本地 FastAPI 服务。
+- 如需修改 API 地址，可在 `frontend/.env.local` 设置 `VITE_API_BASE_URL`。
+- 后端不可用时，读类数据允许降级到 `src/services/mockApi.ts` 展示；真实保存类操作应走本地 API。
+- 当前本地 API 已覆盖项目配置、模型设置、核心项目文件、章节、生成任务、知识工具、角色库和 WebDAV 配置。
+- 生成任务接口当前返回排队状态和日志，尚未接入真实 LLM 执行器。
