@@ -1,15 +1,13 @@
 <template>
   <section class="page">
-    <div class="page-header">
-      <div>
-        <h2 class="page-title">项目</h2>
-        <p class="page-subtitle">按小说项目进入工作台，并查看当前后端输出路径与小说参数。</p>
-      </div>
+    <PageHeader title="项目" subtitle="按小说项目进入工作台，并查看当前后端输出路径与小说参数。">
+      <template #actions>
       <button class="primary-button" type="button">
         <Plus :size="16" />
         新建项目
       </button>
-    </div>
+      </template>
+    </PageHeader>
 
     <section v-if="projectConfig" class="panel">
       <div class="panel-body">
@@ -62,6 +60,7 @@ import { Plus } from '@lucide/vue'
 import { storeToRefs } from 'pinia'
 import { onMounted, ref } from 'vue'
 
+import PageHeader from '@/components/ui/PageHeader.vue'
 import { serviceBridge } from '@/services/serviceBridge'
 import { useProjectsStore } from '@/stores/projects'
 import type { ProjectConfig, ProjectStatus } from '@/services/types'

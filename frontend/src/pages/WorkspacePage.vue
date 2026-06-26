@@ -1,14 +1,12 @@
 <template>
   <section class="page">
-    <div class="page-header">
-      <div>
-        <h2 class="page-title">工作台</h2>
-        <p class="page-subtitle">集中查看小说设定、目录蓝图、章节正文和生成上下文。</p>
-      </div>
-      <div class="action-row">
+    <PageHeader title="工作台" subtitle="汇总当前项目、章节焦点、核心文件状态和下一步生成动作。">
+      <template #actions>
+      <ActionBar align="end">
         <button v-for="action in actions" :key="action" class="ghost-button" type="button">{{ action }}</button>
-      </div>
-    </div>
+      </ActionBar>
+      </template>
+    </PageHeader>
 
     <div class="grid three">
       <MetricTile label="当前章节" :value="activeChapter ? `第 ${activeChapter.order} 章` : '-'" />
@@ -50,26 +48,22 @@
 
       <section class="panel main-draft">
         <div class="panel-body">
-          <div class="editor-heading">
-            <div>
-              <h3 class="panel-title">{{ activeProjectFile?.label ?? '核心文件' }}</h3>
-              <p class="muted">{{ activeProjectFile?.filename ?? '等待加载' }}</p>
-            </div>
-            <button class="primary-button" :disabled="isSaving || !activeProjectFile" type="button" @click="saveActiveProjectFile">
+          <LongTextEditor
+            :model-value="activeProjectFileDraft"
+            :title="activeProjectFile?.label ?? '核心文件'"
+            :filename="activeProjectFile?.filename ?? '等待加载'"
+            :dirty="hasDirtyProjectFile"
+            :save-state="saveMessage"
+            empty-message="当前核心文件暂无内容。"
+            @update:model-value="editorStore.updateActiveProjectFileDraft"
+          >
+            <template #actions>
+              <button class="primary-button" :disabled="isSaving || !activeProjectFile" type="button" @click="saveActiveProjectFile">
               保存
             </button>
-          </div>
-          <textarea
-            class="file-editor"
-            :value="activeProjectFileDraft"
-            @input="updateActiveProjectFileDraft"
-          />
-          <div class="editor-meta">
-            <span>{{ activeProjectFileWordCount }} 字</span>
-            <span v-if="hasDirtyProjectFile">有未保存变更</span>
-            <span v-if="saveMessage">{{ saveMessage }}</span>
-            <span v-if="errorMessage" class="warning-text">{{ errorMessage }}</span>
-          </div>
+            </template>
+          </LongTextEditor>
+          <StatusMessage type="error" :message="errorMessage" />
         </div>
       </section>
 
@@ -90,6 +84,10 @@ import { storeToRefs } from 'pinia'
 import { onMounted, ref } from 'vue'
 
 import MetricTile from '@/components/MetricTile.vue'
+import ActionBar from '@/components/ui/ActionBar.vue'
+import LongTextEditor from '@/components/ui/LongTextEditor.vue'
+import PageHeader from '@/components/ui/PageHeader.vue'
+import StatusMessage from '@/components/ui/StatusMessage.vue'
 import { useEditorStore } from '@/stores/editor'
 import { useGenerationStore } from '@/stores/generation'
 import { useProjectsStore } from '@/stores/projects'
@@ -123,10 +121,6 @@ onMounted(async () => {
   ])
 })
 
-const updateActiveProjectFileDraft = (event: Event) => {
-  editorStore.updateActiveProjectFileDraft((event.target as HTMLTextAreaElement).value)
-}
-
 const saveActiveProjectFile = async () => {
   saveMessage.value = ''
   errorMessage.value = ''
@@ -146,13 +140,6 @@ const saveActiveProjectFile = async () => {
 </script>
 
 <style scoped>
-.action-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
 .workbench-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 0.7fr);
@@ -210,36 +197,4 @@ const saveActiveProjectFile = async () => {
   font-size: 12px;
 }
 
-.editor-heading,
-.editor-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.editor-heading .muted {
-  margin: 4px 0 0;
-}
-
-.file-editor {
-  width: 100%;
-  min-height: 360px;
-  margin-top: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 12px;
-  resize: vertical;
-  color: var(--color-text);
-  line-height: 1.7;
-}
-
-.editor-meta {
-  justify-content: flex-start;
-  margin-top: 8px;
-}
-
-.warning-text {
-  color: var(--color-warning);
-}
 </style>

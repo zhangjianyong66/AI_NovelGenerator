@@ -1,11 +1,12 @@
 <template>
   <section class="page">
-    <div class="page-header">
-      <div>
-        <h2 class="page-title">生成任务</h2>
-        <p class="page-subtitle">创建后端生成任务，查看状态、日志和错误。</p>
-      </div>
-      <div class="action-row">
+    <PageHeader title="生成任务" subtitle="创建后端生成任务，查看状态、日志和错误。" />
+
+    <StatusMessage v-if="isLoading" type="loading" message="正在同步生成任务状态。" />
+    <StatusMessage type="error" :message="errorMessage" />
+
+    <FormSection title="创建任务" description="后端会按当前项目配置创建任务；草稿、定稿和审校会使用当前章节号。">
+      <ActionBar>
         <button
           v-for="action in actions"
           :key="action.stage"
@@ -17,53 +18,67 @@
           <Play :size="16" />
           {{ action.label }}
         </button>
-        <button class="primary-button" :disabled="isLoading" type="button" @click="showBatchPanel = true">
+        <button class="primary-button" :disabled="isLoading" type="button" @click="createBatchJob">
           <Play :size="16" />
           批量
         </button>
+      </ActionBar>
+    </FormSection>
+
+    <FormSection title="批量参数" description="批量生成会使用下列章节范围、目标字数、最低字数和自动扩写设置。">
+      <div class="batch-grid">
+        <label>起始章节<input v-model.number="batchForm.startChapter" min="1" type="number" /></label>
+        <label>结束章节<input v-model.number="batchForm.endChapter" min="1" type="number" /></label>
+        <label>目标字数<input v-model.number="batchForm.targetWords" min="0" type="number" /></label>
+        <label>最低字数<input v-model.number="batchForm.minimumWords" min="0" type="number" /></label>
+        <label class="toggle"><input v-model="batchForm.autoEnrich" type="checkbox" /> 自动扩写</label>
       </div>
-    </div>
+    </FormSection>
 
-    <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
-
-    <section v-if="showBatchPanel" class="panel">
-      <div class="panel-body">
-        <div class="batch-heading">
-          <h3>批量生成参数</h3>
-          <button class="ghost-button" type="button" @click="cancelBatch">取消</button>
-        </div>
-        <div class="batch-grid">
-          <label>起始章节<input v-model.number="batchForm.startChapter" min="1" type="number" /></label>
-          <label>结束章节<input v-model.number="batchForm.endChapter" min="1" type="number" /></label>
-          <label>目标字数<input v-model.number="batchForm.targetWords" min="0" type="number" /></label>
-          <label>最低字数<input v-model.number="batchForm.minimumWords" min="0" type="number" /></label>
-          <label class="toggle"><input v-model="batchForm.autoEnrich" type="checkbox" /> 自动扩写</label>
-        </div>
-        <button class="primary-button batch-submit" :disabled="isLoading" type="button" @click="createBatchJob">
-          创建批量任务
-        </button>
-      </div>
-    </section>
-
-    <div class="job-list">
-      <article v-for="job in jobs" :key="job.id" class="panel">
-        <div class="panel-body">
-          <div class="job-heading">
-            <div>
-              <h3>{{ job.title }}</h3>
-              <p>{{ job.startedAt }}</p>
+    <div class="generation-grid">
+      <FormSection title="任务列表" description="列表用于快速扫描任务状态，选中任务后查看详细日志。">
+        <StatusMessage v-if="jobs.length === 0" type="empty" message="当前项目还没有生成任务。" />
+        <div class="job-list">
+          <button
+            v-for="job in jobs"
+            :key="job.id"
+            class="job-card"
+            :class="{ active: job.id === selectedJobId }"
+            type="button"
+            @click="selectedJobId = job.id"
+          >
+            <div class="job-heading">
+              <div>
+                <h3>{{ job.title }}</h3>
+                <p>{{ job.startedAt }}</p>
+              </div>
+              <span class="status-pill" :class="pillClass(job.status)">{{ statusLabel(job.status) }}</span>
             </div>
-            <span class="status-pill" :class="pillClass(job.status)">{{ job.status }}</span>
-          </div>
-          <div class="progress-track">
-            <span :style="{ width: `${job.progress}%` }" />
-          </div>
-          <ul>
-            <li v-for="line in job.log" :key="line">{{ line }}</li>
-            <li v-if="job.error" class="error-message">{{ job.error }}</li>
-          </ul>
+            <div class="progress-track">
+              <span :style="{ width: `${job.progress}%` }" />
+            </div>
+          </button>
         </div>
-      </article>
+      </FormSection>
+
+      <FormSection title="任务详情与日志" description="查看选中任务的进度、错误和后端日志。">
+        <template v-if="selectedJob">
+          <div class="detail-meta">
+            <span>阶段：{{ stageLabel(selectedJob.stage) }}</span>
+            <span>进度：{{ selectedJob.progress }}%</span>
+            <span>状态：{{ statusLabel(selectedJob.status) }}</span>
+          </div>
+          <StatusMessage v-if="selectedJob.error" type="error" :message="selectedJob.error" />
+          <LongTextEditor
+            :model-value="selectedJob.log.join('\n')"
+            title="日志"
+            readonly
+            empty-message="该任务暂无日志。"
+            min-height="300px"
+          />
+        </template>
+        <StatusMessage v-else type="empty" message="请选择一个任务查看详情。" />
+      </FormSection>
     </div>
   </section>
 </template>
@@ -71,8 +86,13 @@
 <script setup lang="ts">
 import { Play } from '@lucide/vue'
 import { storeToRefs } from 'pinia'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
+import ActionBar from '@/components/ui/ActionBar.vue'
+import FormSection from '@/components/ui/FormSection.vue'
+import LongTextEditor from '@/components/ui/LongTextEditor.vue'
+import PageHeader from '@/components/ui/PageHeader.vue'
+import StatusMessage from '@/components/ui/StatusMessage.vue'
 import { serviceBridge } from '@/services/serviceBridge'
 import type { GenerationJobStatus, GenerationStage } from '@/services/types'
 import { useGenerationStore } from '@/stores/generation'
@@ -89,7 +109,7 @@ const projectsStore = useProjectsStore()
 const generationStore = useGenerationStore()
 const { jobs, isLoading } = storeToRefs(generationStore)
 const errorMessage = ref('')
-const showBatchPanel = ref(false)
+const selectedJobId = ref('')
 const batchForm = ref({
   startChapter: 1,
   endChapter: 1,
@@ -101,7 +121,10 @@ const batchForm = ref({
 onMounted(async () => {
   await projectsStore.loadProjects()
   await generationStore.loadJobs(projectsStore.activeProjectId)
+  selectedJobId.value = jobs.value[0]?.id ?? ''
 })
+
+const selectedJob = computed(() => jobs.value.find((job) => job.id === selectedJobId.value) ?? jobs.value[0])
 
 const createJob = async (stage: GenerationStage) => {
   errorMessage.value = ''
@@ -114,6 +137,7 @@ const createJob = async (stage: GenerationStage) => {
         ? Number(projectConfig.novelParams.chapterNum || 0)
         : undefined,
     })
+    selectedJobId.value = jobs.value[0]?.id ?? selectedJobId.value
   } catch (error) {
     errorMessage.value =
       error instanceof Error
@@ -132,7 +156,7 @@ const createBatchJob = async () => {
       stage: 'batch',
       ...batchForm.value,
     })
-    showBatchPanel.value = false
+    selectedJobId.value = jobs.value[0]?.id ?? selectedJobId.value
   } catch (error) {
     errorMessage.value =
       error instanceof Error
@@ -143,43 +167,51 @@ const createBatchJob = async () => {
   }
 }
 
-const cancelBatch = () => {
-  showBatchPanel.value = false
-}
-
 const pillClass = (status: GenerationJobStatus) => ({
   warning: status === 'running' || status === 'queued',
   neutral: status === 'paused',
 })
+
+const statusLabel = (status: GenerationJobStatus) => {
+  const labels: Record<GenerationJobStatus, string> = {
+    queued: '排队中',
+    running: '运行中',
+    paused: '已暂停',
+    done: '已完成',
+    failed: '失败',
+  }
+  return labels[status]
+}
+
+const stageLabel = (stage: GenerationStage) => {
+  const labels: Record<GenerationStage, string> = {
+    architecture: '设定',
+    directory: '目录',
+    draft: '草稿',
+    finalization: '定稿',
+    batch: '批量',
+    consistency: '审校',
+  }
+  return labels[stage]
+}
+
+watch(jobs, (nextJobs) => {
+  if (!selectedJobId.value || !nextJobs.some((job) => job.id === selectedJobId.value)) {
+    selectedJobId.value = nextJobs[0]?.id ?? ''
+  }
+})
 </script>
 
 <style scoped>
-.action-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.primary-button:disabled {
-  opacity: 0.65;
+.generation-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.85fr) minmax(0, 1.15fr);
+  gap: 16px;
 }
 
 .job-list {
   display: grid;
-  gap: 14px;
-}
-
-.batch-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.batch-heading h3 {
-  margin: 0;
-  font-size: 16px;
+  gap: 10px;
 }
 
 .batch-grid {
@@ -187,7 +219,6 @@ const pillClass = (status: GenerationJobStatus) => ({
   grid-template-columns: repeat(4, minmax(0, 1fr)) 140px;
   gap: 12px;
   align-items: end;
-  margin-top: 12px;
 }
 
 .batch-grid label {
@@ -211,15 +242,26 @@ const pillClass = (status: GenerationJobStatus) => ({
   align-items: center;
 }
 
-.batch-submit {
-  margin-top: 12px;
-}
-
 .job-heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+}
+
+.job-card {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 12px;
+  color: var(--color-text);
+  text-align: left;
+}
+
+.job-card.active {
+  border-color: var(--color-primary);
+  background: #edf7f8;
 }
 
 h3 {
@@ -236,7 +278,7 @@ h3 {
   height: 8px;
   border-radius: 999px;
   background: var(--color-surface-muted);
-  margin: 16px 0;
+  margin: 14px 0 0;
   overflow: hidden;
 }
 
@@ -246,14 +288,12 @@ h3 {
   background: var(--color-primary);
 }
 
-ul {
-  margin: 0;
-  padding-left: 20px;
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
   color: var(--color-text-muted);
-  line-height: 1.7;
-}
-
-.error-message {
-  color: var(--color-warning);
+  font-size: 13px;
 }
 </style>

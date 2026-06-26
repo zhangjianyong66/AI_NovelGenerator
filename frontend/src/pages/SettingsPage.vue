@@ -1,23 +1,20 @@
 <template>
   <section class="page">
-    <div class="page-header">
-      <div>
-        <h2 class="page-title">设置</h2>
-        <p class="page-subtitle">项目输出路径、小说参数、模型、Embedding 和代理配置。</p>
-      </div>
-      <button class="primary-button" :disabled="isSaving || !projectConfig || !modelSettings || !webDavConfig" type="button" @click="saveAll">
-        <Save :size="16" />
-        {{ isSaving ? '保存中' : '保存配置' }}
-      </button>
-    </div>
+    <PageHeader title="设置" subtitle="项目输出路径、小说参数、模型、Embedding、阶段模型、代理和 WebDAV 配置。">
+      <template #actions>
+        <button class="primary-button" :disabled="isSaving || !canSave" type="button" @click="saveAll">
+          <Save :size="16" />
+          {{ isSaving ? '保存中' : '保存全部' }}
+        </button>
+      </template>
+    </PageHeader>
 
-    <section v-if="projectConfig" class="panel">
-      <div class="panel-body">
-        <div class="section-heading">
-          <h3 class="panel-title">项目与小说参数</h3>
-          <span v-if="saveMessage" class="status-pill">{{ saveMessage }}</span>
-          <span v-if="errorMessage" class="status-pill warning">{{ errorMessage }}</span>
-        </div>
+    <StatusMessage v-if="isSaving" type="loading" message="正在提交配置操作。" />
+    <StatusMessage type="success" :message="saveMessage" />
+    <StatusMessage type="error" :message="errorMessage" />
+
+    <Tabs v-model="activeTab" :tabs="tabs">
+      <FormSection v-if="activeTab === 'project' && projectConfig" title="项目参数" description="这些字段会保存到当前 config.json 的项目参数区域。">
         <div class="form-grid two">
           <label class="wide">输出路径<input v-model.trim="projectConfig.outputPath" /></label>
           <label>主题<input v-model.trim="projectConfig.novelParams.topic" /></label>
@@ -31,22 +28,18 @@
           <label>时间限制<input v-model.trim="projectConfig.novelParams.timeConstraint" /></label>
           <label class="wide">用户指导<textarea v-model.trim="projectConfig.novelParams.userGuidance" rows="3" /></label>
         </div>
-      </div>
-    </section>
+      </FormSection>
 
-    <div v-if="modelSettings" class="grid three">
-      <section class="panel">
-        <div class="panel-body">
-          <div class="section-heading">
-            <h3 class="panel-title">LLM 配置</h3>
-            <div class="button-row">
-              <button class="ghost-button" type="button" @click="addLlmConfig">新增</button>
-              <button class="ghost-button" :disabled="modelSettings.llmConfigs.length <= 1" type="button" @click="deleteSelectedLlmConfig">
-                删除
-              </button>
-            </div>
-          </div>
-          <label>
+      <FormSection v-if="activeTab === 'llm' && modelSettings" title="LLM 配置" description="管理多个 LLM 配置，并测试当前选中配置。">
+        <template #actions>
+          <button class="ghost-button" type="button" @click="addLlmConfig">新增</button>
+          <button class="ghost-button" :disabled="modelSettings.llmConfigs.length <= 1" type="button" @click="deleteSelectedLlmConfig">
+            删除
+          </button>
+          <button class="ghost-button" type="button" @click="testSelectedLlmConfig">测试 LLM</button>
+        </template>
+        <div class="form-grid two">
+          <label class="wide">
             当前配置
             <select v-model="modelSettings.selectedLlmConfig">
               <option v-for="item in modelSettings.llmConfigs" :key="item.name" :value="item.name">{{ item.name }}</option>
@@ -64,15 +57,14 @@
             <label>Temperature<input v-model.number="selectedLlmConfig.temperature" type="number" step="0.1" /></label>
             <label>Max Tokens<input v-model.number="selectedLlmConfig.maxTokens" min="0" type="number" /></label>
             <label>Timeout<input v-model.number="selectedLlmConfig.timeout" min="0" type="number" /></label>
-            <button class="ghost-button test-button" type="button" @click="testSelectedLlmConfig">测试 LLM</button>
           </template>
         </div>
-      </section>
+      </FormSection>
 
-      <section class="panel">
-        <div class="panel-body">
-          <h3 class="panel-title">Embedding</h3>
-          <label>
+      <FormSection v-if="activeTab === 'embedding' && modelSettings" title="Embedding" description="Embedding 配置影响知识库检索。切换真实模型后建议清理旧向量库。">
+        <StatusMessage type="warning" message="切换真实 Embedding 模型后需要清理旧向量库，避免旧向量影响检索。" />
+        <div class="form-grid two">
+          <label class="wide">
             当前配置
             <select v-model="modelSettings.selectedEmbeddingConfig">
               <option v-for="item in modelSettings.embeddingConfigs" :key="item.name" :value="item.name">{{ item.name }}</option>
@@ -83,20 +75,20 @@
             <label>接口格式<input v-model.trim="selectedEmbeddingConfig.interfaceFormat" /></label>
             <label>Base URL<input v-model.trim="selectedEmbeddingConfig.baseUrl" /></label>
             <label>模型<input v-model.trim="selectedEmbeddingConfig.modelName" /></label>
-            <label>API Key<input v-model.trim="selectedEmbeddingConfig.apiKey" :placeholder="selectedEmbeddingConfig.hasApiKey ? '已保存，留空则保留' : ''" /></label>
+            <label>
+              API Key
+              <input v-model.trim="selectedEmbeddingConfig.apiKey" :placeholder="selectedEmbeddingConfig.hasApiKey ? '已保存，留空则保留' : ''" />
+            </label>
             <label>Retrieval K<input v-model.number="selectedEmbeddingConfig.retrievalK" min="0" type="number" /></label>
           </template>
-          <p class="muted">切换真实 Embedding 模型后需要清理旧向量库。</p>
         </div>
-      </section>
+      </FormSection>
 
-      <section class="panel">
-        <div class="panel-body">
-          <h3 class="panel-title">代理</h3>
-          <label class="toggle"><input v-model="modelSettings.proxySetting.enabled" type="checkbox" /> 启用代理</label>
+      <FormSection v-if="activeTab === 'stage' && modelSettings" title="代理与阶段模型" description="代理设置会影响后续请求；阶段模型决定不同生成步骤使用哪个 LLM 配置。">
+        <div class="form-grid two">
+          <label class="toggle wide"><input v-model="modelSettings.proxySetting.enabled" type="checkbox" /> 启用代理</label>
           <label>代理地址<input v-model.trim="modelSettings.proxySetting.proxyUrl" /></label>
           <label>代理端口<input v-model.trim="modelSettings.proxySetting.proxyPort" /></label>
-          <h3 class="panel-title stage-title">阶段模型</h3>
           <label v-for="stage in stageOptions" :key="stage.key">
             {{ stage.label }}
             <select v-model="modelSettings.stageModelSelection[stage.key]">
@@ -104,19 +96,13 @@
             </select>
           </label>
         </div>
-      </section>
-    </div>
+      </FormSection>
 
-    <section v-if="webDavConfig" class="panel">
-      <div class="panel-body">
-        <div class="section-heading">
-          <h3 class="panel-title">WebDAV</h3>
-          <div class="button-row">
-            <button class="ghost-button" :disabled="isSaving" type="button" @click="testWebDav">测试连接</button>
-            <button class="ghost-button" :disabled="isSaving" type="button" @click="backupWebDav">备份</button>
-            <button class="ghost-button" :disabled="isSaving" type="button" @click="restoreWebDav">恢复</button>
-          </div>
-        </div>
+      <FormSection v-if="activeTab === 'webdav' && webDavConfig" title="WebDAV" description="用于备份和恢复 config.json。恢复会先在本地 backup/ 下创建备份。">
+        <template #actions>
+          <button class="ghost-button" :disabled="isSaving" type="button" @click="testWebDav">测试连接</button>
+          <button class="ghost-button" :disabled="isSaving" type="button" @click="backupWebDav">备份</button>
+        </template>
         <div class="form-grid three">
           <label>WebDAV URL<input v-model.trim="webDavConfig.webdavUrl" /></label>
           <label>用户名<input v-model.trim="webDavConfig.username" /></label>
@@ -129,8 +115,16 @@
             />
           </label>
         </div>
-      </div>
-    </section>
+        <ConfirmPanel
+          class="webdav-restore"
+          title="从 WebDAV 恢复配置"
+          description="本地配置会先备份再替换，请确认远程备份是你希望恢复的版本。"
+          action-label="恢复"
+          :disabled="isSaving"
+          @confirm="restoreWebDav"
+        />
+      </FormSection>
+    </Tabs>
   </section>
 </template>
 
@@ -138,16 +132,30 @@
 import { Save } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 
+import ConfirmPanel from '@/components/ui/ConfirmPanel.vue'
+import FormSection from '@/components/ui/FormSection.vue'
+import PageHeader from '@/components/ui/PageHeader.vue'
+import StatusMessage from '@/components/ui/StatusMessage.vue'
+import Tabs from '@/components/ui/Tabs.vue'
 import { serviceBridge } from '@/services/serviceBridge'
 import type { ModelSettings, ProjectConfig, StageModelSelection, WebDavConfig } from '@/services/types'
 
+type SettingsTab = 'project' | 'llm' | 'embedding' | 'stage' | 'webdav'
+
+const tabs: Array<{ id: SettingsTab; label: string }> = [
+  { id: 'project', label: '项目参数' },
+  { id: 'llm', label: 'LLM' },
+  { id: 'embedding', label: 'Embedding' },
+  { id: 'stage', label: '阶段模型/代理' },
+  { id: 'webdav', label: 'WebDAV' },
+]
+const activeTab = ref<SettingsTab>('project')
 const projectConfig = ref<ProjectConfig>()
 const modelSettings = ref<ModelSettings>()
 const webDavConfig = ref<WebDavConfig>()
 const isSaving = ref(false)
 const saveMessage = ref('')
 const errorMessage = ref('')
-const testMessage = ref('')
 
 const stageOptions: Array<{ key: keyof StageModelSelection; label: string }> = [
   { key: 'promptDraft', label: '提示词草稿' },
@@ -157,6 +165,8 @@ const stageOptions: Array<{ key: keyof StageModelSelection; label: string }> = [
   { key: 'consistencyReview', label: '一致性审校' },
 ]
 
+const canSave = computed(() => Boolean(projectConfig.value && modelSettings.value && webDavConfig.value))
+
 const selectedLlmConfig = computed(() =>
   modelSettings.value?.llmConfigs.find((item) => item.name === modelSettings.value?.selectedLlmConfig),
 )
@@ -164,6 +174,15 @@ const selectedLlmConfig = computed(() =>
 const selectedEmbeddingConfig = computed(() =>
   modelSettings.value?.embeddingConfigs.find((item) => item.name === modelSettings.value?.selectedEmbeddingConfig),
 )
+
+const setError = (error: unknown, fallback: string) => {
+  errorMessage.value =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error !== null && 'message' in error
+        ? String(error.message)
+        : fallback
+}
 
 const loadSettings = async () => {
   const [loadedProjectConfig, loadedModelSettings, loadedWebDavConfig] = await Promise.all([
@@ -217,10 +236,18 @@ const syncStageSelection = () => {
 
 const testSelectedLlmConfig = async () => {
   if (!modelSettings.value?.selectedLlmConfig) return
-  const result = await serviceBridge.testLlmConfig(modelSettings.value.selectedLlmConfig)
-  testMessage.value = result.message
-  errorMessage.value = result.success ? '' : result.message
-  saveMessage.value = result.success ? result.message : ''
+  isSaving.value = true
+  saveMessage.value = ''
+  errorMessage.value = ''
+  try {
+    const result = await serviceBridge.testLlmConfig(modelSettings.value.selectedLlmConfig)
+    saveMessage.value = result.success ? result.message : ''
+    errorMessage.value = result.success ? '' : result.message
+  } catch (error) {
+    setError(error, '测试 LLM 失败')
+  } finally {
+    isSaving.value = false
+  }
 }
 
 const saveAll = async () => {
@@ -241,13 +268,7 @@ const saveAll = async () => {
     webDavConfig.value = savedWebDavConfig
     saveMessage.value = '已保存'
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : typeof error === 'object' && error !== null && 'message' in error
-          ? String(error.message)
-          : '保存失败'
-    errorMessage.value = message
+    setError(error, '保存失败')
   } finally {
     isSaving.value = false
   }
@@ -262,12 +283,7 @@ const runWebDavOperation = async (operation: () => Promise<{ success: boolean; m
     const result = await operation()
     saveMessage.value = result.message
   } catch (error) {
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : typeof error === 'object' && error !== null && 'message' in error
-          ? String(error.message)
-          : 'WebDAV 操作失败'
+    setError(error, 'WebDAV 操作失败')
   } finally {
     isSaving.value = false
   }
@@ -287,7 +303,6 @@ const backupWebDav = async () => {
 }
 
 const restoreWebDav = async () => {
-  if (!window.confirm('确认从 WebDAV 恢复配置？本地配置会先备份再替换。')) return
   await runWebDavOperation(async () => {
     const result = await serviceBridge.restoreWebDavConfig()
     await loadSettings()
@@ -328,13 +343,6 @@ textarea {
   align-items: center;
 }
 
-.section-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
 .form-grid {
   display: grid;
   gap: 12px;
@@ -352,24 +360,7 @@ textarea {
   grid-column: 1 / -1;
 }
 
-.primary-button:disabled {
-  opacity: 0.65;
-}
-
-.button-row {
-  display: flex;
-  gap: 8px;
-}
-
-.ghost-button:disabled {
-  opacity: 0.55;
-}
-
-.test-button {
-  margin-top: 12px;
-}
-
-.stage-title {
-  margin-top: 18px;
+.webdav-restore {
+  margin-top: 14px;
 }
 </style>

@@ -1,11 +1,8 @@
 <template>
   <section class="page">
-    <div class="page-header">
-      <div>
-        <h2 class="page-title">章节编辑</h2>
-        <p class="page-subtitle">从当前输出目录加载章节文件，编辑后保存回 `chapter_X.txt`。</p>
-      </div>
-      <div class="action-row">
+    <PageHeader title="章节编辑" subtitle="从当前输出目录加载章节文件，编辑后保存回 chapter_X.txt。">
+      <template #actions>
+      <ActionBar align="end">
         <button class="ghost-button" type="button" @click="reloadChapters">刷新</button>
         <button class="ghost-button" type="button" @click="selectAdjacentChapter('previous')">上一章</button>
         <button class="ghost-button" type="button" @click="selectAdjacentChapter('next')">下一章</button>
@@ -13,8 +10,9 @@
           <Save :size="16" />
           {{ isSaving ? '保存中' : '保存草稿' }}
         </button>
-      </div>
-    </div>
+      </ActionBar>
+      </template>
+    </PageHeader>
 
     <div class="editor-grid">
       <aside class="panel chapter-list">
@@ -36,14 +34,17 @@
 
       <section class="panel editor-panel">
         <div class="panel-body">
-          <h3>{{ activeChapter?.title ?? '暂无章节' }}</h3>
-          <textarea :value="activeChapterDraft" aria-label="章节正文" @input="updateActiveChapterDraft" />
-          <div class="editor-meta">
-            <span>{{ activeChapterWordCount }} 字</span>
-            <span v-if="hasDirtyChapter">有未保存变更</span>
-            <span v-if="saveMessage">{{ saveMessage }}</span>
-            <span v-if="errorMessage" class="warning-text">{{ errorMessage }}</span>
-          </div>
+          <LongTextEditor
+            :model-value="activeChapterDraft"
+            :title="activeChapter?.title ?? '暂无章节'"
+            :dirty="hasDirtyChapter"
+            :save-state="saveMessage"
+            empty-message="当前输出目录尚未加载到章节正文。"
+            min-height="470px"
+            aria-label="章节正文"
+            @update:model-value="editorStore.updateActiveChapterDraft"
+          />
+          <StatusMessage type="error" :message="errorMessage" />
         </div>
       </section>
 
@@ -73,6 +74,10 @@ import { storeToRefs } from 'pinia'
 import { onMounted, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 
+import ActionBar from '@/components/ui/ActionBar.vue'
+import LongTextEditor from '@/components/ui/LongTextEditor.vue'
+import PageHeader from '@/components/ui/PageHeader.vue'
+import StatusMessage from '@/components/ui/StatusMessage.vue'
 import { useEditorStore } from '@/stores/editor'
 import { useProjectsStore } from '@/stores/projects'
 
@@ -117,10 +122,6 @@ const selectAdjacentChapter = (direction: 'previous' | 'next') => {
   }
 }
 
-const updateActiveChapterDraft = (event: Event) => {
-  editorStore.updateActiveChapterDraft((event.target as HTMLTextAreaElement).value)
-}
-
 const saveActiveChapter = async () => {
   saveMessage.value = ''
   errorMessage.value = ''
@@ -153,18 +154,6 @@ onBeforeRouteLeave(() => confirmDirtyNavigation())
   min-height: 580px;
 }
 
-.action-row,
-.editor-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.action-row {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
 .chapter-button {
   display: block;
   width: 100%;
@@ -188,32 +177,6 @@ onBeforeRouteLeave(() => confirmDirtyNavigation())
 .chapter-button strong {
   display: block;
   margin-top: 4px;
-}
-
-.editor-panel h3 {
-  margin: 0 0 12px;
-  font-size: 20px;
-}
-
-textarea {
-  width: 100%;
-  min-height: 470px;
-  resize: vertical;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 14px;
-  color: var(--color-text);
-  line-height: 1.8;
-}
-
-.editor-meta {
-  margin-top: 8px;
-  color: var(--color-text-muted);
-  font-size: 12px;
-}
-
-.warning-text {
-  color: var(--color-warning);
 }
 
 dl {

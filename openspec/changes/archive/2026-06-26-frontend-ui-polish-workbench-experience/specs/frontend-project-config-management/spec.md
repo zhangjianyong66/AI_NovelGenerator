@@ -1,8 +1,4 @@
-## Purpose
-
-Define frontend management of project configuration, model settings, embedding settings, proxy settings, and generation stage model selection.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Project output path management
 The system SHALL allow the frontend to load, display, select, and persist the active project output path used by existing novel files, and SHALL present this setting in a clearly grouped project-parameter configuration area.
@@ -18,17 +14,6 @@ The system SHALL allow the frontend to load, display, select, and persist the ac
 #### Scenario: User navigates settings groups
 - **WHEN** the user opens the settings page
 - **THEN** project parameters, LLM configuration, Embedding configuration, proxy and generation-stage model mapping, and WebDAV settings are separated into tabs or equivalent grouped sections
-
-### Requirement: Novel parameter editing
-The system SHALL allow the frontend to edit and save the novel parameters currently available in the Python GUI.
-
-#### Scenario: User edits core novel parameters
-- **WHEN** the user changes topic, genre, chapter count, per-chapter word count, chapter number, user guidance, involved characters, key items, scene location, or time constraint
-- **THEN** the backend saves those values for subsequent generation operations
-
-#### Scenario: User reloads saved parameters
-- **WHEN** the frontend is reopened after parameters were saved
-- **THEN** the saved values are loaded instead of reverting to mock defaults
 
 ### Requirement: LLM configuration management
 The system SHALL allow the frontend to manage multiple LLM configurations with the same functional coverage as the current GUI, while keeping dense model fields inside a focused LLM settings group.
@@ -59,14 +44,3 @@ The system SHALL allow the frontend to edit, save, and test Embedding configurat
 #### Scenario: Embedding warning is visible
 - **WHEN** the user views or changes the active Embedding configuration
 - **THEN** the UI displays a clear reminder that changing real Embedding models may require clearing the existing vectorstore
-
-### Requirement: Generation stage model selection
-The system SHALL allow the frontend to select which saved LLM configuration is used by each generation stage.
-
-#### Scenario: User assigns generation configs
-- **WHEN** the user selects configurations for architecture, directory, draft, finalization, consistency review, or prompt draft
-- **THEN** the backend persists the stage-to-configuration mapping
-
-#### Scenario: Missing selected config
-- **WHEN** a saved stage mapping references a deleted LLM configuration
-- **THEN** the frontend displays a recoverable invalid-selection state and requires the user to choose an available configuration before running that stage

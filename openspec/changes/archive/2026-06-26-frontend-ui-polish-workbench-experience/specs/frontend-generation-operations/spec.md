@@ -1,19 +1,4 @@
-## Purpose
-
-Describe frontend generation controls and backend job visibility for novel generation workflows.
-
-## Requirements
-
-### Requirement: Generation operations create backend jobs
-The system SHALL let the frontend start generation operations by creating backend jobs instead of running generation logic in the browser.
-
-#### Scenario: User starts architecture generation
-- **WHEN** the user starts novel architecture generation from the frontend
-- **THEN** the frontend sends the current project parameters to the backend and receives a generation job identifier
-
-#### Scenario: User starts chapter draft generation
-- **WHEN** the user starts chapter draft generation from the frontend
-- **THEN** the backend job uses the selected chapter number, chapter context, saved model selection, and active output path
+## MODIFIED Requirements
 
 ### Requirement: Supported generation stages are available
 The system SHALL provide frontend operations for architecture generation, directory generation, draft generation, finalization, batch generation, and consistency review, organized in a stable task creation panel.

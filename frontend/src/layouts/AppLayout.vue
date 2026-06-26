@@ -40,7 +40,7 @@
             <span :style="{ width: projectProgress }" />
           </div>
         </template>
-        <p v-else class="muted">正在加载 mock 项目数据</p>
+        <p v-else class="muted">正在加载项目数据</p>
       </section>
 
       <section class="context-section">
@@ -54,7 +54,7 @@
             <span :style="{ width: `${runningJob.progress}%` }" />
           </div>
         </template>
-        <p v-else class="muted">暂无运行中的 mock 任务</p>
+        <p v-else class="muted">暂无运行中的生成任务</p>
       </section>
 
       <section class="context-section">
@@ -103,8 +103,8 @@ const navItems = [
   { to: '/workspace', label: '工作台', icon: Brain },
   { to: '/chapters', label: '章节编辑', icon: PenLine },
   { to: '/generation', label: '生成任务', icon: Sparkles },
-  { to: '/settings', label: '设置', icon: Settings },
   { to: '/knowledge', label: '知识库', icon: Library },
+  { to: '/settings', label: '设置', icon: Settings },
 ]
 
 const currentTitle = computed(() => String(route.meta.label ?? '项目'))

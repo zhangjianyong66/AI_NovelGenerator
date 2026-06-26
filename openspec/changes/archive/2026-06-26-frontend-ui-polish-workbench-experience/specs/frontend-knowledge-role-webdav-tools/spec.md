@@ -1,8 +1,4 @@
-## Purpose
-
-Specify frontend access to knowledge import, role library, plot arc, and WebDAV operations backed by the local API.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Knowledge files can be imported
 The system SHALL allow the frontend to import knowledge files into the active project's vectorstore through the backend, and SHALL place knowledge-file operations in a dedicated knowledge files tab or equivalent section.
@@ -67,18 +63,3 @@ The system SHALL provide frontend access to basic role library operations backed
 #### Scenario: Role editing is separated from knowledge import
 - **WHEN** the user opens the role library area
 - **THEN** role category navigation, role selection, role content editing, import, and apply-to-chapter actions are grouped together without knowledge file import controls in the same content region
-
-### Requirement: WebDAV backup and restore are available
-The system SHALL allow the frontend to test WebDAV connection, back up local configuration, and restore local configuration through the backend.
-
-#### Scenario: User tests WebDAV connection
-- **WHEN** the user submits WebDAV URL, username, and password for testing
-- **THEN** the backend tests the connection and returns success or failure without exposing the password back to the frontend
-
-#### Scenario: User backs up config
-- **WHEN** the user requests WebDAV backup with valid settings
-- **THEN** the backend uploads the local configuration to the configured remote location and reports the result
-
-#### Scenario: User restores config
-- **WHEN** the user confirms WebDAV restore
-- **THEN** the backend creates a local backup before replacing configuration and the frontend refreshes configuration state after restore
