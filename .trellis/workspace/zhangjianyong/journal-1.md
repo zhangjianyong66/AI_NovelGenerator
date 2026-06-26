@@ -162,3 +162,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: 补充前端功能地图与验收剧本
+
+**Date**: 2026-06-26
+**Task**: 补充前端功能地图与验收剧本
+**Branch**: `main`
+
+### Summary
+
+创建项目功能地图与前端验收剧本，明确旧 GUI、新前端、本地 API 边界，补充无 API Key 冒烟验收和真实 LLM 验收清单，并在前端 README 与 AGENTS 中加入文档入口。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3e5363b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
