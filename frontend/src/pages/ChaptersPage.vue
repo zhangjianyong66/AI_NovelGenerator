@@ -34,14 +34,15 @@
 
       <section class="panel editor-panel">
         <div class="panel-body">
-          <LongTextEditor
+          <WritingEditor
             :model-value="activeChapterDraft"
             :title="activeChapter?.title ?? '暂无章节'"
             :dirty="hasDirtyChapter"
-            :save-state="saveMessage"
+            :save-state="saveState"
             empty-message="当前输出目录尚未加载到章节正文。"
             min-height="470px"
             aria-label="章节正文"
+            @save="saveActiveChapter"
             @update:model-value="editorStore.updateActiveChapterDraft"
           />
           <StatusMessage type="error" :message="errorMessage" />
@@ -71,13 +72,13 @@
 <script setup lang="ts">
 import { Save } from '@lucide/vue'
 import { storeToRefs } from 'pinia'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 
 import ActionBar from '@/components/ui/ActionBar.vue'
-import LongTextEditor from '@/components/ui/LongTextEditor.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import StatusMessage from '@/components/ui/StatusMessage.vue'
+import { WritingEditor } from '@/features/writing'
 import { useEditorStore } from '@/stores/editor'
 import { useProjectsStore } from '@/stores/projects'
 
@@ -93,6 +94,7 @@ const {
 } = storeToRefs(editorStore)
 const saveMessage = ref('')
 const errorMessage = ref('')
+const saveState = computed(() => (saveMessage.value ? { state: 'saved' as const, text: saveMessage.value } : null))
 
 onMounted(async () => {
   await projectsStore.loadProjects()

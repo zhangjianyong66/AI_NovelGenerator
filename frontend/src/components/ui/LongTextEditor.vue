@@ -19,8 +19,8 @@
     />
     <div class="long-text__meta">
       <span>{{ wordCount }} 字</span>
-      <span v-if="dirty">有未保存变更</span>
-      <span v-if="saveState">{{ saveState }}</span>
+      <SaveState v-if="dirty" state="dirty" />
+      <SaveState v-if="saveState" state="idle" :text="saveState" />
       <span v-if="readonly">只读</span>
     </div>
     <StatusMessage v-if="emptyMessage && !modelValue" type="empty" :message="emptyMessage" />
@@ -30,6 +30,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import SaveState from './SaveState.vue'
 import StatusMessage from './StatusMessage.vue'
 
 const props = withDefaults(

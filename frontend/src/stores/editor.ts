@@ -3,6 +3,14 @@ import { defineStore } from 'pinia'
 import { serviceBridge } from '@/services/serviceBridge'
 import type { Chapter, ProjectFile, ProjectFileId } from '@/services/types'
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    return String(error.message)
+  }
+  return fallback
+}
+
 export const useEditorStore = defineStore('editor', {
   state: () => ({
     chapters: [] as Chapter[],
@@ -13,6 +21,8 @@ export const useEditorStore = defineStore('editor', {
     projectFileDrafts: {} as Record<ProjectFileId, string>,
     isLoading: false,
     isSaving: false,
+    error: '',
+    lastSavedAt: '',
   }),
   getters: {
     activeChapter(state): Chapter | undefined {
@@ -54,12 +64,16 @@ export const useEditorStore = defineStore('editor', {
   actions: {
     async loadChapters(projectId: string) {
       this.isLoading = true
+      this.error = ''
       try {
         this.chapters = await serviceBridge.listChapters(projectId)
         this.chapterDrafts = Object.fromEntries(
           this.chapters.map((chapter) => [chapter.id, chapter.content]),
         ) as Record<string, string>
         this.activeChapterId = this.activeChapterId || this.chapters[0]?.id || ''
+      } catch (error) {
+        this.error = getErrorMessage(error, '加载章节失败')
+        throw error
       } finally {
         this.isLoading = false
       }
@@ -93,6 +107,7 @@ export const useEditorStore = defineStore('editor', {
       if (!activeChapter) return
 
       this.isSaving = true
+      this.error = ''
       try {
         const savedChapter = await serviceBridge.saveChapter(
           activeChapter.order,
@@ -102,18 +117,26 @@ export const useEditorStore = defineStore('editor', {
           chapter.id === savedChapter.id ? savedChapter : chapter,
         )
         this.chapterDrafts[savedChapter.id] = savedChapter.content
+        this.lastSavedAt = savedChapter.updatedAt
+      } catch (error) {
+        this.error = getErrorMessage(error, '保存章节失败')
+        throw error
       } finally {
         this.isSaving = false
       }
     },
     async loadProjectFiles() {
       this.isLoading = true
+      this.error = ''
       try {
         this.projectFiles = await serviceBridge.listProjectFiles()
         this.projectFileDrafts = Object.fromEntries(
           this.projectFiles.map((file) => [file.id, file.content]),
         ) as Record<ProjectFileId, string>
         this.activeProjectFileId = this.activeProjectFileId || this.projectFiles[0]?.id || 'novelSetting'
+      } catch (error) {
+        this.error = getErrorMessage(error, '加载项目文件失败')
+        throw error
       } finally {
         this.isLoading = false
       }
@@ -129,6 +152,7 @@ export const useEditorStore = defineStore('editor', {
       if (!activeFile) return
 
       this.isSaving = true
+      this.error = ''
       try {
         const savedFile = await serviceBridge.saveProjectFile(
           activeFile.id,
@@ -136,6 +160,10 @@ export const useEditorStore = defineStore('editor', {
         )
         this.projectFiles = this.projectFiles.map((file) => (file.id === savedFile.id ? savedFile : file))
         this.projectFileDrafts[savedFile.id] = savedFile.content
+        this.lastSavedAt = new Date().toISOString()
+      } catch (error) {
+        this.error = getErrorMessage(error, '保存项目文件失败')
+        throw error
       } finally {
         this.isSaving = false
       }

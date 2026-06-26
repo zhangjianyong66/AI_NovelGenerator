@@ -48,13 +48,14 @@
 
       <section class="panel main-draft">
         <div class="panel-body">
-          <LongTextEditor
+          <WritingEditor
             :model-value="activeProjectFileDraft"
             :title="activeProjectFile?.label ?? '核心文件'"
-            :filename="activeProjectFile?.filename ?? '等待加载'"
+            :subtitle="activeProjectFile?.filename ?? '等待加载'"
             :dirty="hasDirtyProjectFile"
-            :save-state="saveMessage"
+            :save-state="saveState"
             empty-message="当前核心文件暂无内容。"
+            @save="saveActiveProjectFile"
             @update:model-value="editorStore.updateActiveProjectFileDraft"
           >
             <template #actions>
@@ -62,7 +63,7 @@
               保存
             </button>
             </template>
-          </LongTextEditor>
+          </WritingEditor>
           <StatusMessage type="error" :message="errorMessage" />
         </div>
       </section>
@@ -81,13 +82,13 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import MetricTile from '@/components/MetricTile.vue'
 import ActionBar from '@/components/ui/ActionBar.vue'
-import LongTextEditor from '@/components/ui/LongTextEditor.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import StatusMessage from '@/components/ui/StatusMessage.vue'
+import { WritingEditor } from '@/features/writing'
 import { useEditorStore } from '@/stores/editor'
 import { useGenerationStore } from '@/stores/generation'
 import { useProjectsStore } from '@/stores/projects'
@@ -95,6 +96,7 @@ import { useProjectsStore } from '@/stores/projects'
 const actions = ['生成设定', '扩展目录', '生成草稿', '润色定稿', '批量生成']
 const saveMessage = ref('')
 const errorMessage = ref('')
+const saveState = computed(() => (saveMessage.value ? { state: 'saved' as const, text: saveMessage.value } : null))
 
 const projectsStore = useProjectsStore()
 const editorStore = useEditorStore()

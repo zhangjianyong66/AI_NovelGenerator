@@ -1,0 +1,58 @@
+:root {
+  color-scheme: light;
+  font-family:
+    "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB",
+    "Segoe UI", sans-serif;
+
+  --color-bg: #f4f6f8;
+  --color-surface: #ffffff;
+  --color-surface-muted: #eef2f5;
+  --color-surface-subtle: #fbfcfd;
+  --color-border: #d8e0e7;
+  --color-border-strong: #bfd0dc;
+  --color-text: #17202a;
+  --color-text-muted: #657382;
+  --color-primary: #1f6f78;
+  --color-primary-strong: #15525a;
+  --color-primary-soft: #e3f1f2;
+  --color-accent: #b85c38;
+  --color-success: #2f7d52;
+  --color-success-bg: #e7f3ef;
+  --color-success-border: #b9ddca;
+  --color-warning: #a96b14;
+  --color-warning-bg: #fff3df;
+  --color-warning-border: #efd4a7;
+  --color-danger: #b23b3b;
+  --color-danger-strong: #8e2f2f;
+  --color-danger-bg: #fff1f1;
+  --color-danger-border: #edc2c2;
+
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-page-title: 24px;
+
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --space-6: 14px;
+  --space-7: 16px;
+  --space-8: 20px;
+  --space-9: 24px;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-pill: 999px;
+
+  --shadow-soft: 0 8px 24px rgb(20 33 45 / 8%);
+
+  --control-height-sm: 32px;
+  --control-height-md: 36px;
+  --control-height-lg: 40px;
+  --layout-page-gap: 16px;
+  --z-index-popover: 20;
+}

@@ -12,8 +12,9 @@
 - UI 字体与控件缩放集中定义在 `ui/styles.py`；新增或调整 CustomTkinter 界面时优先使用 `UI_FONT`、`EDITOR_FONT`、`SMALL_FONT`、`BOLD_FONT`、`TITLE_FONT` 和 `WIDGET_SCALING`，避免重新散落硬编码字体元组。该模块会按系统选择中文字体，Linux/Ubuntu 优先使用 `Noto Sans CJK SC` 等中文字体，Windows 优先使用 `Microsoft YaHei`。
 - `frontend/` 是与现有 Python GUI 并行演进的 Tauri 2 + Vue 3 + TypeScript + Vite 前端工程；不会替代 `python main.py`。
 - 前端依赖通过 `cd frontend && npm install` 安装；常用命令包括 `npm run dev`、`npm run typecheck`、`npm run build` 和 `npm run tauri:dev`。
-- 前端源码目录约定：`src/router/` 管理路由，`src/layouts/` 管理应用壳层，`src/pages/` 放页面，`src/components/` 放通用组件，`src/stores/` 放 Pinia UI 状态，`src/services/` 放类型和 mock service，`src/styles/` 放全局样式 token。
-- 前端通用 UI 组件集中放在 `frontend/src/components/ui/`，当前包括 `PageHeader`、`ActionBar`、`StatusMessage`、`FormSection`、`Tabs`、`LongTextEditor` 和 `ConfirmPanel`；新增页面应优先复用这些组件来呈现页面标题、操作栏、状态提示、表单分组、tabs、长文本编辑/查看和破坏性操作确认。
+- 前端源码目录约定：`src/router/` 管理路由，`src/layouts/` 管理应用壳层，`src/pages/` 放页面，`src/components/` 放通用组件，`src/features/` 放业务 feature 模块，`src/stores/` 放 Pinia UI 状态，`src/services/` 放类型和 mock service，`src/styles/` 放全局样式 token。
+- 前端通用 UI 组件集中放在 `frontend/src/components/ui/`，当前包括 `PageHeader`、`ActionBar`、`StatusMessage`、`FormSection`、`Tabs`、`LongTextEditor`、`ConfirmPanel`、`AppButton`、`IconButton`、字段组件、`Toolbar`、`SplitPane`、空/加载/保存状态组件；新增页面应优先复用这些组件来呈现页面标题、操作栏、状态提示、表单分组、tabs、长文本编辑/查看和破坏性操作确认。
+- 前端写作编辑相关业务组件放在 `frontend/src/features/writing/`；`WritingEditor` 是章节正文和核心项目文件编辑的适配层，第一阶段底层仍是增强版 `textarea`，页面不应直接依赖底层编辑器实现。
 - 前端主导航顺序按写作流程组织为：项目 → 工作台 → 章节编辑 → 生成任务 → 知识库 → 设置；页面标题和信息架构应继续遵循该流程。
 - 设置页按 tabs 分组为项目参数、LLM、Embedding、阶段模型/代理、WebDAV；知识库页按 tabs 分组为知识文件、剧情要点、角色库；生成页分为任务创建、批量参数、任务列表、任务详情/日志区域。
 - `app/api/server.py` 是前端真实接入使用的本地 FastAPI 最小服务边界；开发时可用 `uvicorn app.api.server:app --reload --host 127.0.0.1 --port 8000` 启动本地 API。

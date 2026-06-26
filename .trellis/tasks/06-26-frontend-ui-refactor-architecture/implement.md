@@ -10,10 +10,10 @@
 
 ## Milestone 1: 设计 token 与基础 UI
 
-- [ ] 拆分 `frontend/src/styles/global.css` 为 token/base/global 或等价结构。
-- [ ] 新增或整理基础 UI：`AppButton`、`IconButton`、字段组件、`Toolbar`、`SplitPane`、空/加载/保存状态。
-- [ ] 让现有 `PageHeader`、`ActionBar`、`StatusMessage`、`FormSection`、`Tabs` 复用 token 和基础样式。
-- [ ] 保持现有页面视觉不出现明显回退。
+- [x] 拆分 `frontend/src/styles/global.css` 为 token/base/global 或等价结构。
+- [x] 新增或整理基础 UI：`AppButton`、`IconButton`、字段组件、`Toolbar`、`SplitPane`、空/加载/保存状态。
+- [x] 让现有 `PageHeader`、`ActionBar`、`StatusMessage`、`FormSection`、`Tabs` 复用 token 和基础样式。
+- [x] 保持现有页面视觉不出现明显回退。
 
 验证：
 
@@ -22,13 +22,18 @@ cd frontend
 npm run typecheck
 npm run build
 ```
+
+结果：
+
+- 2026-06-26：`npm run typecheck` 通过。
+- 2026-06-26：`npm run build` 通过。
 
 ## Milestone 2: writing feature 与编辑器适配层
 
-- [ ] 创建 `frontend/src/features/writing/` 目录结构。
-- [ ] 新增 `WritingEditor`，以增强版 textarea 为第一阶段内核。
-- [ ] 封装字数/段落/选区/保存状态/只读状态等编辑器基础能力。
-- [ ] 梳理 `editor` store 的 async state、脏状态和保存状态，必要时下沉到 `features/writing/stores/`。
+- [x] 创建 `frontend/src/features/writing/` 目录结构。
+- [x] 新增 `WritingEditor`，以增强版 textarea 为第一阶段内核。
+- [x] 封装字数/段落/选区/保存状态/只读状态等编辑器基础能力。
+- [x] 梳理 `editor` store 的 async state、脏状态和保存状态，必要时下沉到 `features/writing/stores/`。
 
 验证：
 
@@ -37,6 +42,12 @@ cd frontend
 npm run typecheck
 npm run build
 ```
+
+结果：
+
+- 2026-06-26：`npm run typecheck` 通过。
+- 2026-06-26：`npm run build` 通过。
+- 2026-06-26：`git diff --check` 通过。
 
 手动验收：
 

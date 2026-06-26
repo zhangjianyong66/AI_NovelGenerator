@@ -1,12 +1,10 @@
 <template>
-  <Toolbar class="action-bar" :align="align">
+  <div class="toolbar" :class="{ 'toolbar--end': align === 'end' }">
     <slot />
-  </Toolbar>
+  </div>
 </template>
 
 <script setup lang="ts">
-import Toolbar from './Toolbar.vue'
-
 withDefaults(
   defineProps<{
     align?: 'start' | 'end'

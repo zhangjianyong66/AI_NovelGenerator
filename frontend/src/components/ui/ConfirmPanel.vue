@@ -4,23 +4,24 @@
       <strong>{{ title }}</strong>
       <p>{{ description }}</p>
     </div>
-    <button class="ghost-button" :disabled="disabled" type="button" @click="confirming = !confirming">
+    <AppButton variant="secondary" :disabled="disabled" @click="confirming = !confirming">
       {{ confirming ? '取消' : actionLabel }}
-    </button>
-    <button
+    </AppButton>
+    <AppButton
       v-if="confirming"
-      class="primary-button danger-button"
+      variant="danger"
       :disabled="disabled"
-      type="button"
       @click="confirm"
     >
       确认{{ actionLabel }}
-    </button>
+    </AppButton>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
+
+import AppButton from './AppButton.vue'
 
 defineProps<{
   title: string
