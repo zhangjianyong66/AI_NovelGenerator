@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 
-import { mockApi } from '@/services/mockApi'
+import { serviceBridge } from '@/services/serviceBridge'
 import type { Project } from '@/services/types'
 
 export const useProjectsStore = defineStore('projects', {
@@ -19,7 +19,7 @@ export const useProjectsStore = defineStore('projects', {
       if (this.projects.length > 0) return
       this.isLoading = true
       try {
-        this.projects = await mockApi.listProjects()
+        this.projects = await serviceBridge.listProjects()
         if (!this.activeProjectId && this.projects[0]) {
           this.activeProjectId = this.projects[0].id
         }

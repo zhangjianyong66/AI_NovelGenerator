@@ -3,13 +3,30 @@
     <div class="page-header">
       <div>
         <h2 class="page-title">项目</h2>
-        <p class="page-subtitle">按小说项目进入工作台，当前仅展示 mock 项目数据。</p>
+        <p class="page-subtitle">按小说项目进入工作台，并查看当前后端输出路径与小说参数。</p>
       </div>
       <button class="primary-button" type="button">
         <Plus :size="16" />
         新建项目
       </button>
     </div>
+
+    <section v-if="projectConfig" class="panel">
+      <div class="panel-body">
+        <div class="config-summary">
+          <div>
+            <h3 class="panel-title">当前输出路径</h3>
+            <p class="path-text">{{ projectConfig.outputPath || '未设置' }}</p>
+          </div>
+          <div class="summary-meta">
+            <span>主题：{{ projectConfig.novelParams.topic || '未填写' }}</span>
+            <span>类型：{{ projectConfig.novelParams.genre || '未填写' }}</span>
+            <span>章节：{{ projectConfig.novelParams.numChapters }}</span>
+            <span>每章字数：{{ projectConfig.novelParams.wordNumber }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <div class="grid two">
       <article
@@ -43,17 +60,24 @@
 <script setup lang="ts">
 import { Plus } from '@lucide/vue'
 import { storeToRefs } from 'pinia'
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 
+import { serviceBridge } from '@/services/serviceBridge'
 import { useProjectsStore } from '@/stores/projects'
-import type { ProjectStatus } from '@/services/types'
+import type { ProjectConfig, ProjectStatus } from '@/services/types'
 
 const projectsStore = useProjectsStore()
 const { projects, activeProjectId } = storeToRefs(projectsStore)
+const projectConfig = ref<ProjectConfig>()
 
 onMounted(() => {
   void projectsStore.loadProjects()
+  void loadProjectConfig()
 })
+
+const loadProjectConfig = async () => {
+  projectConfig.value = await serviceBridge.getProjectConfig()
+}
 
 const selectProject = (projectId: string) => {
   projectsStore.selectProject(projectId)
@@ -116,6 +140,28 @@ h3 {
 .project-meta {
   border-top: 1px solid var(--color-border);
   padding-top: 12px;
+  font-size: 13px;
+}
+
+.config-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.path-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.summary-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  color: var(--color-text-muted);
   font-size: 13px;
 }
 </style>

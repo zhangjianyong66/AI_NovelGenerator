@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 
-import { mockApi } from '@/services/mockApi'
-import type { GenerationJob } from '@/services/types'
+import { serviceBridge } from '@/services/serviceBridge'
+import type { GenerationJob, GenerationJobCreateRequest } from '@/services/types'
 
 export const useGenerationStore = defineStore('generation', {
   state: () => ({
@@ -20,7 +20,17 @@ export const useGenerationStore = defineStore('generation', {
     async loadJobs(projectId: string) {
       this.isLoading = true
       try {
-        this.jobs = await mockApi.listGenerationJobs(projectId)
+        this.jobs = await serviceBridge.listGenerationJobs(projectId)
+      } finally {
+        this.isLoading = false
+      }
+    },
+    async createJob(request: GenerationJobCreateRequest) {
+      this.isLoading = true
+      try {
+        const job = await serviceBridge.createGenerationJob(request)
+        this.jobs = [job, ...this.jobs.filter((item) => item.id !== job.id)]
+        return job
       } finally {
         this.isLoading = false
       }

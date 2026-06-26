@@ -13,7 +13,18 @@
 - `frontend/` 是与现有 Python GUI 并行演进的 Tauri 2 + Vue 3 + TypeScript + Vite 前端工程；不会替代 `python main.py`。
 - 前端依赖通过 `cd frontend && npm install` 安装；常用命令包括 `npm run dev`、`npm run typecheck`、`npm run build` 和 `npm run tauri:dev`。
 - 前端源码目录约定：`src/router/` 管理路由，`src/layouts/` 管理应用壳层，`src/pages/` 放页面，`src/components/` 放通用组件，`src/stores/` 放 Pinia UI 状态，`src/services/` 放类型和 mock service，`src/styles/` 放全局样式 token。
-- 当前前端仅使用 `src/services/mockApi.ts` 中的 mock 数据，不调用真实 Python 后端、不执行小说生成、不持久化配置、不操作向量库；后续后端服务化后再替换 mock service。
+- `app/api/server.py` 是前端真实接入使用的本地 FastAPI 最小服务边界；开发时可用 `uvicorn app.api.server:app --reload --host 127.0.0.1 --port 8000` 启动本地 API。
+- 本地 API 已提供 `GET /health`、`GET/PUT /api/project-config`、`GET/PUT /api/model-settings` 和 `POST /api/model-settings/test-llm`；项目配置接口读写根目录 `config.json` 的 `other_params.filepath`、`topic`、`genre`、`num_chapters`、`word_number`、`chapter_num`、`user_guidance`、`characters_involved`、`key_items`、`scene_location`、`time_constraint`，响应给前端时使用 camelCase 字段。
+- 模型设置接口读写 `config.json` 的 `llm_configs`、`embedding_configs`、`choose_configs`、`proxy_setting`、`last_interface_format` 和 `last_embedding_interface_format`；响应时 `apiKey` 置空并用 `hasApiKey` 表示是否已有密钥，保存时空 `apiKey` 会保留同名旧密钥。
+- 核心项目文件接口为 `GET /api/project-files` 和 `PUT /api/project-files/{file_id}`，固定支持 `novelSetting` → `Novel_setting.txt`、`novelDirectory` → `Novel_directory.txt`、`characterState` → `character_state.txt`、`globalSummary` → `global_summary.txt`；文件目录来自 `config.json` 的 `other_params.filepath`。
+- 章节接口为 `GET /api/projects/{project_id}/chapters` 和 `PUT /api/chapters/{chapter_number}`；当前按 `other_params.filepath` 下的 `chapter_<数字>.txt` 读取和保存，并尝试从 `Novel_directory.txt` 补章节标题和简述。
+- 生成任务接口为 `POST /api/generation-jobs`、`GET /api/projects/{project_id}/jobs`、`GET /api/generation-jobs/{job_id}`；当前支持 `architecture`、`directory`、`draft`、`finalization`、`consistency` 和 `batch`，以 in-memory job registry 返回 `queued` 状态和日志，尚未接入真实 LLM 执行器。`batch` 请求支持 `startChapter`、`endChapter`、`targetWords`、`minimumWords`、`autoEnrich`。
+- 知识工具接口为 `POST /api/knowledge/import`、`POST /api/knowledge/clear-vectorstore`、`GET /api/knowledge/plot-arcs`；当前导入会把指定本地文件复制到当前输出目录的 `vectorstore/imported/`，清理会删除 `vectorstore/`，剧情要点读取 `plot_arcs.txt`。
+- 角色库接口为 `GET /api/roles`、`GET/PUT /api/roles/{category}/{role_name}`、`POST /api/roles/import`；当前兼容输出目录下 `角色库/<分类>/<角色名>.txt`，前端可将选中角色名写入项目配置的 `characters_involved`。
+- WebDAV 接口为 `GET/PUT /api/webdav-config`、`POST /api/webdav/test`、`POST /api/webdav/backup`、`POST /api/webdav/restore`；配置读写 `config.json` 的 `webdav_config`，响应时密码置空并用 `hasPassword` 表示是否已有密码，备份/恢复使用远程 `AI_Novel_Generator/config.json`，恢复前会在本地 `backup/` 下创建 `config_*_bak.json`。
+- 前端真实 API 地址默认使用 `http://127.0.0.1:8000`；如需修改，在 `frontend/.env.local` 中设置 `VITE_API_BASE_URL`。
+- 前端真实/Mock 数据访问应通过 `frontend/src/services/serviceBridge.ts` 统一进入，页面和 store 不应新增对 `mockApi` 的直接依赖。
+- 当前前端已开始通过 `src/services/serviceBridge.ts` 调用真实本地后端；后端不可用时允许降级到 `src/services/mockApi.ts` 展示数据，但真实保存类操作应走后端接口，不应让页面直接调用 mock。
 - 前端构建产物和安装产物已忽略：`frontend/node_modules/`、`frontend/dist/`、`frontend/src-tauri/target/` 不应提交。
 - 当前测试可用 `python -m pytest tests` 运行；若环境缺少 pytest，先安装测试依赖或使用项目环境中的测试工具。
 - 架构重构计划放在 `docs/superpowers/plans/`；主计划为 `2026-06-24-architecture-refactor.md`，执行时先读取主计划和对应 milestone 子计划。

@@ -5,8 +5,6 @@ import os
 import logging
 import tempfile
 import threading
-from llm_adapters import create_llm_adapter
-from embedding_adapters import create_embedding_adapter
 
 IS_ENGLISH = False
 _config_lock = threading.RLock()
@@ -139,6 +137,8 @@ def test_llm_config(interface_format, api_key, base_url, model_name, temperature
     """测试当前的LLM配置是否可用"""
     def task():
         try:
+            from llm_adapters import create_llm_adapter
+
             log_func("开始测试LLM配置...")
             llm_adapter = create_llm_adapter(
                 interface_format=interface_format,
@@ -167,6 +167,8 @@ def test_embedding_config(api_key, base_url, interface_format, model_name, log_f
     """测试当前的Embedding配置是否可用"""
     def task():
         try:
+            from embedding_adapters import create_embedding_adapter
+
             log_func("开始测试Embedding配置...")
             embedding_adapter = create_embedding_adapter(
                 interface_format=interface_format,

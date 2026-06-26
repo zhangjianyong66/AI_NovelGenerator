@@ -6,8 +6,8 @@
         <h1>{{ currentTitle }}</h1>
       </div>
       <div class="topbar-status">
-        <span class="status-dot" />
-        <span>Mock UI</span>
+        <span class="status-dot" :class="bridgeStatus.mode" />
+        <span>{{ bridgeModeLabel }}</span>
         <span class="divider" />
         <span>{{ activeProject?.title ?? '未选择项目' }}</span>
       </div>
@@ -80,9 +80,10 @@ import {
   Sparkles,
 } from '@lucide/vue'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 
+import { serviceBridge, type ServiceBridgeStatus } from '@/services/serviceBridge'
 import { useEditorStore } from '@/stores/editor'
 import { useGenerationStore } from '@/stores/generation'
 import { useProjectsStore } from '@/stores/projects'
@@ -91,6 +92,7 @@ const route = useRoute()
 const projectsStore = useProjectsStore()
 const editorStore = useEditorStore()
 const generationStore = useGenerationStore()
+const bridgeStatus = ref<ServiceBridgeStatus>({ ...serviceBridge.getStatus() })
 
 const { activeProject } = storeToRefs(projectsStore)
 const { activeChapter } = storeToRefs(editorStore)
@@ -106,13 +108,29 @@ const navItems = [
 ]
 
 const currentTitle = computed(() => String(route.meta.label ?? '项目'))
+const bridgeModeLabel = computed(() => {
+  const labels: Record<ServiceBridgeStatus['mode'], string> = {
+    backend: '本地后端已连接',
+    disconnected: '本地后端未连接',
+    mock: 'Mock fallback',
+  }
+
+  return labels[bridgeStatus.value.mode]
+})
 const projectProgress = computed(() => {
   if (!activeProject.value || activeProject.value.chaptersTotal === 0) return '0%'
   return `${Math.round((activeProject.value.chaptersCompleted / activeProject.value.chaptersTotal) * 100)}%`
 })
 
+const syncBridgeStatus = () => {
+  bridgeStatus.value = { ...serviceBridge.getStatus() }
+}
+
 onMounted(async () => {
+  await serviceBridge.checkHealth()
+  syncBridgeStatus()
   await projectsStore.loadProjects()
+  syncBridgeStatus()
 })
 
 watch(
@@ -120,6 +138,7 @@ watch(
   async (projectId) => {
     if (!projectId) return
     await Promise.all([editorStore.loadChapters(projectId), generationStore.loadJobs(projectId)])
+    syncBridgeStatus()
   },
   { immediate: true },
 )
@@ -172,7 +191,15 @@ watch(
   width: 9px;
   height: 9px;
   border-radius: 50%;
+  background: var(--color-warning);
+}
+
+.status-dot.backend {
   background: var(--color-success);
+}
+
+.status-dot.disconnected {
+  background: var(--color-danger);
 }
 
 .divider {

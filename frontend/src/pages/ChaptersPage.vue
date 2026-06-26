@@ -3,12 +3,17 @@
     <div class="page-header">
       <div>
         <h2 class="page-title">章节编辑</h2>
-        <p class="page-subtitle">章节列表、正文编辑区和元信息面板使用 mock 数据呈现。</p>
+        <p class="page-subtitle">从当前输出目录加载章节文件，编辑后保存回 `chapter_X.txt`。</p>
       </div>
-      <button class="primary-button" type="button">
-        <Save :size="16" />
-        保存草稿
-      </button>
+      <div class="action-row">
+        <button class="ghost-button" type="button" @click="reloadChapters">刷新</button>
+        <button class="ghost-button" type="button" @click="selectAdjacentChapter('previous')">上一章</button>
+        <button class="ghost-button" type="button" @click="selectAdjacentChapter('next')">下一章</button>
+        <button class="primary-button" :disabled="isSaving || !activeChapter" type="button" @click="saveActiveChapter">
+          <Save :size="16" />
+          {{ isSaving ? '保存中' : '保存草稿' }}
+        </button>
+      </div>
     </div>
 
     <div class="editor-grid">
@@ -21,7 +26,7 @@
             class="chapter-button"
             :class="{ active: chapter.id === activeChapter?.id }"
             type="button"
-            @click="editorStore.selectChapter(chapter.id)"
+            @click="selectChapter(chapter.id)"
           >
             <span>第 {{ chapter.order }} 章</span>
             <strong>{{ chapter.title }}</strong>
@@ -32,7 +37,13 @@
       <section class="panel editor-panel">
         <div class="panel-body">
           <h3>{{ activeChapter?.title ?? '暂无章节' }}</h3>
-          <textarea :value="activeChapter?.content" aria-label="章节正文" />
+          <textarea :value="activeChapterDraft" aria-label="章节正文" @input="updateActiveChapterDraft" />
+          <div class="editor-meta">
+            <span>{{ activeChapterWordCount }} 字</span>
+            <span v-if="hasDirtyChapter">有未保存变更</span>
+            <span v-if="saveMessage">{{ saveMessage }}</span>
+            <span v-if="errorMessage" class="warning-text">{{ errorMessage }}</span>
+          </div>
         </div>
       </section>
 
@@ -45,7 +56,7 @@
             <dt>视角</dt>
             <dd>{{ activeChapter.viewpoint }}</dd>
             <dt>字数</dt>
-            <dd>{{ activeChapter.words }}</dd>
+            <dd>{{ activeChapterWordCount }}</dd>
             <dt>更新时间</dt>
             <dd>{{ activeChapter.updatedAt }}</dd>
           </dl>
@@ -59,19 +70,79 @@
 <script setup lang="ts">
 import { Save } from '@lucide/vue'
 import { storeToRefs } from 'pinia'
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 
 import { useEditorStore } from '@/stores/editor'
 import { useProjectsStore } from '@/stores/projects'
 
 const projectsStore = useProjectsStore()
 const editorStore = useEditorStore()
-const { chapters, activeChapter } = storeToRefs(editorStore)
+const {
+  chapters,
+  activeChapter,
+  activeChapterDraft,
+  activeChapterWordCount,
+  hasDirtyChapter,
+  isSaving,
+} = storeToRefs(editorStore)
+const saveMessage = ref('')
+const errorMessage = ref('')
 
 onMounted(async () => {
   await projectsStore.loadProjects()
   await editorStore.loadChapters(projectsStore.activeProjectId)
 })
+
+const confirmDirtyNavigation = () => {
+  if (!hasDirtyChapter.value) return true
+  const shouldDiscard = window.confirm('当前章节有未保存变更，继续切换将丢弃这些变更。')
+  if (shouldDiscard) {
+    editorStore.discardChapterDrafts()
+  }
+  return shouldDiscard
+}
+
+const selectChapter = (chapterId: string) => {
+  if (!confirmDirtyNavigation()) return
+  editorStore.selectChapter(chapterId)
+}
+
+const selectAdjacentChapter = (direction: 'previous' | 'next') => {
+  if (!confirmDirtyNavigation()) return
+  if (direction === 'previous') {
+    editorStore.selectPreviousChapter()
+  } else {
+    editorStore.selectNextChapter()
+  }
+}
+
+const updateActiveChapterDraft = (event: Event) => {
+  editorStore.updateActiveChapterDraft((event.target as HTMLTextAreaElement).value)
+}
+
+const saveActiveChapter = async () => {
+  saveMessage.value = ''
+  errorMessage.value = ''
+  try {
+    await editorStore.saveActiveChapter()
+    saveMessage.value = '已保存'
+  } catch (error) {
+    errorMessage.value =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'object' && error !== null && 'message' in error
+          ? String(error.message)
+          : '保存失败'
+  }
+}
+
+const reloadChapters = async () => {
+  if (!confirmDirtyNavigation()) return
+  await editorStore.loadChapters(projectsStore.activeProjectId)
+}
+
+onBeforeRouteLeave(() => confirmDirtyNavigation())
 </script>
 
 <style scoped>
@@ -80,6 +151,18 @@ onMounted(async () => {
   grid-template-columns: 250px minmax(0, 1fr) 260px;
   gap: 16px;
   min-height: 580px;
+}
+
+.action-row,
+.editor-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-row {
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .chapter-button {
@@ -121,6 +204,16 @@ textarea {
   padding: 14px;
   color: var(--color-text);
   line-height: 1.8;
+}
+
+.editor-meta {
+  margin-top: 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.warning-text {
+  color: var(--color-warning);
 }
 
 dl {
