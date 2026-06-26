@@ -1,10 +1,13 @@
 <template>
   <section class="page">
-    <PageHeader title="工作台" subtitle="汇总当前项目、章节焦点、核心文件状态和下一步生成动作。">
+    <PageHeader title="工作台" subtitle="围绕当前章节和核心项目文件组织编辑、上下文与生成动作。">
       <template #actions>
-      <ActionBar align="end">
-        <button v-for="action in actions" :key="action" class="ghost-button" type="button">{{ action }}</button>
-      </ActionBar>
+        <ActionBar align="end">
+          <button class="ghost-button" type="button" @click="reloadWorkspace">刷新</button>
+          <button class="primary-button" :disabled="isSaving || !activeProjectFile" type="button" @click="saveActiveProjectFile">
+            保存当前文件
+          </button>
+        </ActionBar>
       </template>
     </PageHeader>
 
@@ -14,39 +17,48 @@
       <MetricTile label="当前文件字数" :value="activeProjectFileWordCount" />
     </div>
 
-    <div class="workbench-grid">
-      <section class="panel">
-        <div class="panel-body">
-          <h3 class="panel-title">项目文件</h3>
-          <div class="file-list">
-            <button
-              v-for="file in projectFiles"
-              :key="file.id"
-              class="file-tab"
-              :class="{ active: file.id === activeProjectFile?.id }"
-              type="button"
-              @click="editorStore.selectProjectFile(file.id)"
-            >
-              <span>{{ file.label }}</span>
-              <small>{{ file.wordCount }} 字</small>
-            </button>
+    <WorkbenchLayout>
+      <template #left>
+        <section class="panel">
+          <div class="panel-body">
+            <h3 class="panel-title">项目文件</h3>
+            <div class="file-list">
+              <button
+                v-for="file in projectFiles"
+                :key="file.id"
+                class="file-tab"
+                :class="{ active: file.id === activeProjectFile?.id }"
+                type="button"
+                @click="editorStore.selectProjectFile(file.id)"
+              >
+                <span>{{ file.label }}</span>
+                <small>{{ file.wordCount }} 字</small>
+              </button>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="panel">
-        <div class="panel-body">
-          <h3 class="panel-title">目录蓝图预览</h3>
-          <ol class="chapter-outline">
-            <li v-for="chapter in chapters" :key="chapter.id">
-              <span>第 {{ chapter.order }} 章</span>
-              <strong>{{ chapter.title }}</strong>
-            </li>
-          </ol>
-        </div>
-      </section>
+        <section class="panel">
+          <div class="panel-body">
+            <h3 class="panel-title">章节导航</h3>
+            <div class="chapter-list">
+              <button
+                v-for="chapter in chapters"
+                :key="chapter.id"
+                class="chapter-link"
+                :class="{ active: chapter.id === activeChapter?.id }"
+                type="button"
+                @click="editorStore.selectChapter(chapter.id)"
+              >
+                <span>第 {{ chapter.order }} 章</span>
+                <strong>{{ chapter.title }}</strong>
+              </button>
+            </div>
+          </div>
+        </section>
+      </template>
 
-      <section class="panel main-draft">
+      <section class="panel editor-shell">
         <div class="panel-body">
           <WritingEditor
             :model-value="activeProjectFileDraft"
@@ -55,28 +67,71 @@
             :dirty="hasDirtyProjectFile"
             :save-state="saveState"
             empty-message="当前核心文件暂无内容。"
+            min-height="560px"
             @save="saveActiveProjectFile"
             @update:model-value="editorStore.updateActiveProjectFileDraft"
           >
             <template #actions>
               <button class="primary-button" :disabled="isSaving || !activeProjectFile" type="button" @click="saveActiveProjectFile">
-              保存
-            </button>
+                {{ isSaving ? '保存中' : '保存' }}
+              </button>
             </template>
           </WritingEditor>
-          <StatusMessage type="error" :message="errorMessage" />
+          <StatusMessage type="error" :message="errorMessage || editorError" />
         </div>
       </section>
 
-      <section class="panel">
-        <div class="panel-body">
-          <h3 class="panel-title">上下文提示</h3>
-          <ul class="context-list">
-            <li v-for="line in latestLogLines" :key="line">{{ line }}</li>
-          </ul>
-        </div>
-      </section>
-    </div>
+      <template #right>
+        <section class="panel">
+          <div class="panel-body">
+            <h3 class="panel-title">上下文资料</h3>
+            <dl v-if="activeChapter" class="context-meta">
+              <dt>章节</dt>
+              <dd>第 {{ activeChapter.order }} 章</dd>
+              <dt>标题</dt>
+              <dd>{{ activeChapter.title }}</dd>
+              <dt>状态</dt>
+              <dd>{{ activeChapter.status }}</dd>
+              <dt>视角</dt>
+              <dd>{{ activeChapter.viewpoint }}</dd>
+            </dl>
+            <p class="muted">{{ activeChapter?.synopsis || '暂无章节简述。' }}</p>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-body">
+            <h3 class="panel-title">生成动作</h3>
+            <div class="generation-actions">
+              <button v-for="action in actions" :key="action" class="ghost-button" type="button">
+                {{ action }}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-body">
+            <h3 class="panel-title">任务状态</h3>
+            <template v-if="runningJob">
+              <span class="status-pill warning">{{ runningJob.status }}</span>
+              <p class="muted">{{ runningJob.title }} · {{ runningJob.progress }}%</p>
+            </template>
+            <p v-else class="muted">当前没有运行中的生成任务。</p>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-body">
+            <h3 class="panel-title">日志摘要</h3>
+            <ul v-if="latestLogLines.length" class="context-list">
+              <li v-for="line in latestLogLines" :key="line">{{ line }}</li>
+            </ul>
+            <p v-else class="muted">暂无生成日志。</p>
+          </div>
+        </section>
+      </template>
+    </WorkbenchLayout>
   </section>
 </template>
 
@@ -88,7 +143,7 @@ import MetricTile from '@/components/MetricTile.vue'
 import ActionBar from '@/components/ui/ActionBar.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import StatusMessage from '@/components/ui/StatusMessage.vue'
-import { WritingEditor } from '@/features/writing'
+import { WorkbenchLayout, WritingEditor } from '@/features/writing'
 import { useEditorStore } from '@/stores/editor'
 import { useGenerationStore } from '@/stores/generation'
 import { useProjectsStore } from '@/stores/projects'
@@ -96,7 +151,11 @@ import { useProjectsStore } from '@/stores/projects'
 const actions = ['生成设定', '扩展目录', '生成草稿', '润色定稿', '批量生成']
 const saveMessage = ref('')
 const errorMessage = ref('')
-const saveState = computed(() => (saveMessage.value ? { state: 'saved' as const, text: saveMessage.value } : null))
+const saveState = computed(() => {
+  if (isSaving.value) return { state: 'saving' as const, text: '保存中' }
+  if (saveMessage.value) return { state: 'saved' as const, text: saveMessage.value }
+  return null
+})
 
 const projectsStore = useProjectsStore()
 const editorStore = useEditorStore()
@@ -111,17 +170,26 @@ const {
   activeProjectFileWordCount,
   hasDirtyProjectFile,
   isSaving,
+  error: editorError,
 } = storeToRefs(editorStore)
 const { runningJob, latestLogLines } = storeToRefs(generationStore)
 
-onMounted(async () => {
+const loadWorkspace = async () => {
   await projectsStore.loadProjects()
   await Promise.all([
     editorStore.loadChapters(activeProjectId.value),
     editorStore.loadProjectFiles(),
     generationStore.loadJobs(activeProjectId.value),
   ])
-})
+}
+
+onMounted(loadWorkspace)
+
+const reloadWorkspace = async () => {
+  saveMessage.value = ''
+  errorMessage.value = ''
+  await loadWorkspace()
+}
 
 const saveActiveProjectFile = async () => {
   saveMessage.value = ''
@@ -142,61 +210,89 @@ const saveActiveProjectFile = async () => {
 </script>
 
 <style scoped>
-.workbench-grid {
+.editor-shell {
+  min-height: 640px;
+}
+
+.file-list,
+.chapter-list,
+.generation-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.7fr);
-  gap: 16px;
+  gap: var(--space-3);
 }
 
-.main-draft {
-  grid-column: span 1;
-}
-
-.chapter-outline,
-.context-list {
-  margin: 0;
-  padding-left: 20px;
-}
-
-.chapter-outline li,
-.context-list li {
-  margin: 10px 0;
-  line-height: 1.5;
-}
-
-.chapter-outline span {
-  display: inline-block;
-  min-width: 64px;
-  color: var(--color-text-muted);
-  font-size: 13px;
-}
-
-.file-list {
-  display: grid;
-  gap: 8px;
-}
-
-.file-tab {
+.file-tab,
+.chapter-link {
   display: flex;
   align-items: center;
   justify-content: space-between;
   min-height: 44px;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-4);
   background: var(--color-surface);
   color: var(--color-text);
+  text-align: left;
 }
 
-.file-tab.active {
+.chapter-link {
+  align-items: flex-start;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: 54px;
+}
+
+.file-tab.active,
+.chapter-link.active {
   border-color: var(--color-primary);
-  background: #edf7f8;
+  background: var(--color-primary-soft);
 }
 
 .file-tab small,
-.editor-meta {
+.chapter-link span {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
+.chapter-link strong {
+  line-height: 1.35;
+}
+
+.context-meta {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: var(--space-3);
+  margin: 0 0 var(--space-5);
+}
+
+.context-meta dt {
+  color: var(--color-text-muted);
+}
+
+.context-meta dd {
+  margin: 0;
+}
+
+.context-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.context-list li {
+  margin: var(--space-3) 0;
+  line-height: 1.5;
+}
+
+@media (max-width: 1120px) {
+  .editor-shell {
+    min-height: 560px;
+  }
+}
+
+@media (max-width: 960px) {
+  .editor-shell {
+    min-height: auto;
+  }
+}
 </style>

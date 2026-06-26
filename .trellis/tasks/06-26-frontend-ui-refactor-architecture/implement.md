@@ -57,12 +57,12 @@ npm run build
 
 ## Milestone 3: 工作台重构
 
-- [ ] 新增 `WorkbenchLayout` 或等价工作台布局组件。
-- [ ] 工作台改为章节编辑器中心布局。
-- [ ] 左侧轨道整合项目文件和章节导航。
-- [ ] 中间区域使用 `WritingEditor`。
-- [ ] 右侧轨道整合上下文资料、生成动作、运行任务和日志摘要。
-- [ ] 支持约 900px 宽度可用降级，评估 Tauri `minWidth` 配置。
+- [x] 新增 `WorkbenchLayout` 或等价工作台布局组件。
+- [x] 工作台改为章节编辑器中心布局。
+- [x] 左侧轨道整合项目文件和章节导航。
+- [x] 中间区域使用 `WritingEditor`。
+- [x] 右侧轨道整合上下文资料、生成动作、运行任务和日志摘要。
+- [x] 支持约 900px 宽度可用降级，评估 Tauri `minWidth` 配置。
 
 验证：
 
@@ -71,6 +71,12 @@ cd frontend
 npm run typecheck
 npm run build
 ```
+
+结果：
+
+- 2026-06-26：`npm run typecheck` 通过。
+- 2026-06-26：`npm run build` 通过。
+- 2026-06-26：`git diff --check` 通过。
 
 手动验收：
 
