@@ -64,6 +64,10 @@ uvicorn app.api.server:app --reload --host 127.0.0.1 --port 8000
 - 配置保存测试要断言 legacy 字段仍保留，例如保存项目配置后 `llm_configs` 不丢失。
 - 新增接口至少覆盖成功路径、关键错误路径和持久化结果。
 - 解析器和纯函数优先写直接单元测试，例如 `tests/test_chapter_directory_parser.py`。
+- 归档任务中的 `test-cases.md` 可作为前端人工验收清单；如果本轮没有启动应用逐项人工验收 TC-01 到 TC-30，不要标记为全量手工通过。
+- 可用 `cdp-browser-chrome` MCP 做前端浏览器冒烟测试：启动 `./scripts/dev.sh`，若默认端口被占用则用 `API_PORT` / `FRONTEND_PORT` 覆盖；通过 CDP 检查主路由渲染、后端连接状态和关键按钮交互。
+- CDP 冒烟测试不能替代外部服务或破坏性手工项，例如 WebDAV 备份/恢复、清理向量库、真实文件导入；这些项目必须在验收结论中列为未覆盖或需人工确认。
+- 当前 CDP 工具未暴露稳定的 viewport resize 能力；响应式 TC-29 若要求约 900px 宽度，应通过可控浏览器窗口或 Playwright 类工具补测，不要仅凭默认视口结论替代。
 
 ## 禁止模式
 
