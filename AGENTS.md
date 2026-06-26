@@ -31,10 +31,30 @@
 - 前端构建产物和安装产物已忽略：`frontend/node_modules/`、`frontend/dist/`、`frontend/src-tauri/target/` 不应提交。
 - 当前测试可用 `python -m pytest tests` 运行；若环境缺少 pytest，先安装测试依赖或使用项目环境中的测试工具。
 - 架构重构计划放在 `docs/superpowers/plans/`；主计划为 `2026-06-24-architecture-refactor.md`，执行时先读取主计划和对应 milestone 子计划。
-- 前端真实能力接入后的 UI/UX 重构 OpenSpec change 为 `openspec/changes/frontend-ui-polish-workbench-experience/`；目标是统一项目、工作台、章节、生成、知识库、设置的信息架构，抽出通用 UI 组件，并优化设置页、知识库页和生成页。第一阶段只做页面结构和组件复用，不改真实后端接口、不引入大型 UI 框架、不处理 Tauri 打包体验、不删除旧 GUI。
 
 # 协作约定
 
 - 回答和计划默认使用中文。
 - Git commit message 使用中文，推荐 Conventional Commits 格式，例如 `fix(ui): 修复配置保存异常`。
 - 不要提交密钥、真实账号、私有 Base URL 或生成的大体积小说输出。
+<!-- TRELLIS:START -->
+# Trellis Instructions
+
+These instructions are for AI assistants working in this project.
+
+This project is managed by Trellis. The working knowledge you need lives under `.trellis/`:
+
+- `.trellis/workflow.md` — development phases, when to create tasks, skill routing
+- `.trellis/spec/` — package- and layer-scoped coding guidelines (read before writing code in a given layer)
+- `.trellis/workspace/` — per-developer journals and session traces
+- `.trellis/tasks/` — active and archived tasks (PRDs, research, jsonl context)
+
+If a Trellis command is available on your platform (e.g. `/trellis:finish-work`, `/trellis:continue`), prefer it over manual steps. Not every platform exposes every command.
+
+If you're using Codex or another agent-capable tool, additional project-scoped helpers may live in:
+- `.agents/skills/` — reusable Trellis skills
+- `.codex/agents/` — optional custom subagents
+
+Managed by Trellis. Edits outside this block are preserved; edits inside may be overwritten by a future `trellis update`.
+
+<!-- TRELLIS:END -->
