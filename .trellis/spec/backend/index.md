@@ -16,6 +16,7 @@
 修改代码前按任务读取对应规范：
 
 - 改目录、模块边界、入口或部署方式：读 [Directory Structure](./directory-structure.md)
+- 改数据库、ORM、迁移或持久化方案：读 [Database Guidelines](./database-guidelines.md) 和 [Persistence And Config](./persistence-and-config.md)
 - 改配置、输出文件、向量库、角色库或 WebDAV：读 [Persistence And Config](./persistence-and-config.md)
 - 改 API、异常展示、前后端错误合约：读 [Error Handling](./error-handling.md)
 - 改 Python、Vue、测试或构建脚本：读 [Quality Guidelines](./quality-guidelines.md)

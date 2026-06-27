@@ -75,3 +75,40 @@ frontend/
 - Python 文件和函数使用 `snake_case`；保留既有 `chapter_X.txt`、`outline_X.txt`、`Novel_setting.txt`、`Novel_directory.txt` 等输出文件名。
 - API 对前端暴露 camelCase 字段，例如 `numChapters`、`wordNumber`、`hasApiKey`；写入 `config.json` 时转换为 legacy snake_case 字段，例如 `num_chapters`、`word_number`。
 - Vue 组件使用 `PascalCase.vue`，服务和 store 使用现有小驼峰或复数命名，例如 `serviceBridge.ts`、`projects.ts`。
+
+## 代码例子
+
+API model 字段面向前端使用 camelCase，约束直接放在 Pydantic model 上，示例来自 `app/api/server.py`：
+
+```python
+class NovelParams(BaseModel):
+    topic: str = ""
+    genre: str = ""
+    numChapters: int = Field(default=0, ge=0)
+    wordNumber: int = Field(default=0, ge=0)
+    chapterNum: str = ""
+```
+
+输出目录核心文件名由 API 边界统一维护，页面和测试不应重复定义，示例来自 `app/api/server.py`：
+
+```python
+CORE_PROJECT_FILES = {
+    "novelSetting": ("小说设定", "Novel_setting.txt"),
+    "novelDirectory": ("目录蓝图", "Novel_directory.txt"),
+    "characterState": ("角色状态", "character_state.txt"),
+    "globalSummary": ("全局摘要", "global_summary.txt"),
+}
+```
+
+旧 GUI 的长耗时操作通过回调把日志和异常送回界面，示例来自 `ui/main_window.py`：
+
+```python
+test_llm_config(
+    interface_format=interface_format,
+    api_key=api_key,
+    base_url=base_url,
+    model_name=model_name,
+    log_func=self.safe_log,
+    handle_exception_func=self.handle_exception,
+)
+```

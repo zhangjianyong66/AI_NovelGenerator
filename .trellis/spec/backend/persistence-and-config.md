@@ -97,3 +97,42 @@ API 当前固定支持的核心项目文件映射在 `app/api/server.py` 的 `CO
 - 不把前端保存类操作静默落到 mock 数据；保存应走本地 API。
 - 不在未完成 SQLite milestone 前新增伪数据库层或迁移目录。
 - 不让测试读写真实根目录 `config.json`，必须使用临时路径。
+
+## 代码例子
+
+配置保存使用临时文件和 `os.replace()` 做原子替换，示例来自 `app/api/server.py`：
+
+```python
+fd, temp_path = tempfile.mkstemp(suffix=".json", dir=str(config_file.parent))
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as file:
+        json.dump(config, file, ensure_ascii=False, indent=4)
+    os.replace(temp_path, config_file)
+except Exception:
+    os.unlink(temp_path)
+    raise
+```
+
+旧 GUI 配置管理同样使用锁和原子写入，示例来自 `config_manager.py`：
+
+```python
+with _config_lock:
+    fd, temp_path = tempfile.mkstemp(suffix='.json', dir=dir_name)
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        json.dump(config_data, f, ensure_ascii=False, indent=4)
+    os.replace(temp_path, config_file)
+```
+
+密钥字段保存时保留旧值，API 响应不回显密钥正文，示例来自 `app/api/server.py`：
+
+```python
+"api_key": item.apiKey or (old_llm_configs.get(item.name) or {}).get("api_key", "")
+```
+
+角色库测试展示了当前文件系统持久化合同，示例来自 `tests/test_api_role_library.py`：
+
+```python
+role_dir = output_path / "角色库" / "主角"
+(role_dir / "林澈.txt").write_text("林澈：调查员", encoding="utf-8")
+client = TestClient(create_app(config_file=str(config_file)))
+```

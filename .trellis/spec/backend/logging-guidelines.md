@@ -51,3 +51,31 @@
 - `error`：配置读写失败、网络调用失败、向量库删除失败、无法恢复的生成异常。
 
 测试中不要断言完整日志文本，除非日志本身就是用户可见合约。
+
+## 代码例子
+
+LLM 适配器对空响应使用 warning，不把请求密钥写入日志，示例来自 `llm_adapters.py`：
+
+```python
+if not response_text:
+    logging.warning("No response from OpenAIAdapter.")
+```
+
+GUI 统一把异常堆栈写入日志框和 Python 日志，示例来自 `ui/main_window.py`：
+
+```python
+def handle_exception(self, context: str):
+    full_message = f"{context}\n{traceback.format_exc()}"
+    logging.error(full_message)
+    self.safe_log(full_message)
+```
+
+向量库工具用不同级别区分可恢复状态和失败，示例来自 `novel_generator/vectorstore_utils.py`：
+
+```python
+logging.info("No vector store found to clear.")
+logging.warning(f"Failed to load vector store: {e}")
+logging.error(f"无法删除向量库文件夹，请关闭程序后手动删除 {store_dir}。\n {str(e)}")
+```
+
+新增日志时如果内容来自用户小说、角色库、知识库或配置输入，先做摘要化或改为 UI 状态提示，不直接输出全文。

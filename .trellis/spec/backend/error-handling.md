@@ -51,3 +51,38 @@
 - 角色库分类或角色名包含 `/`、`\`、`.`、`..`：API 应拒绝，防止路径穿越。
 - 批量生成章节范围无效：返回 `400`；缺失章节文件时指出第一个缺失章节。
 - WebDAV URL 为空：返回 `400`；真实网络错误不伪装成成功。
+
+## 代码例子
+
+API 数据边界 helper 直接抛出 `HTTPException`，示例来自 `app/api/server.py`：
+
+```python
+def _active_output_path(config_path: Path) -> Path:
+    filepath = (_load_config(config_path).get("other_params") or {}).get("filepath") or ""
+    if not str(filepath).strip():
+        raise HTTPException(status_code=400, detail="请先设置项目输出路径")
+    return Path(filepath)
+```
+
+不存在的核心项目文件返回 `404`，调用方不用猜测文件名，示例来自 `app/api/server.py`：
+
+```python
+if file_id not in CORE_PROJECT_FILES:
+    raise HTTPException(status_code=404, detail="未知项目文件")
+```
+
+前端连接错误集中在 `serviceBridge.ts` 标准化，页面只读共享状态：
+
+```ts
+status.error = normalized
+status.mode = options.allowMockFallback ? 'mock' : 'disconnected'
+throw normalized
+```
+
+旧 GUI 对破坏性操作使用显式确认，示例来自 `ui/generation_handlers.py`：
+
+```python
+first_confirm = messagebox.askyesno("警告", "确定要清空本地向量库吗？此操作不可恢复！")
+if first_confirm:
+    second_confirm = messagebox.askyesno("二次确认", "你确定真的要删除所有向量数据吗？此操作不可恢复！")
+```

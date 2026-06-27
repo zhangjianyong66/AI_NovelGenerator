@@ -86,3 +86,40 @@ uvicorn app.api.server:app --reload --host 127.0.0.1 --port 8000
 - 配置字段是否同时更新 Python API、前端类型、测试和项目说明。
 - 保存类操作是否真实持久化，而不是 mock 成功。
 - `.gitignore` 中禁止提交的产物是否没有进入变更。
+
+## 代码例子
+
+API 测试必须通过临时配置隔离真实用户配置，示例来自 `tests/test_api_project_config.py`：
+
+```python
+config_file = tmp_path / "config.json"
+client = TestClient(create_app(config_file=str(config_file)))
+response = client.get("/api/project-config")
+```
+
+配置兼容测试应断言 legacy 字段仍写回原结构，示例来自 `tests/test_api_project_config.py`：
+
+```python
+saved = json.loads(config_file.read_text(encoding="utf-8"))
+assert saved["other_params"]["filepath"] == str(tmp_path / "saved-output")
+assert saved["other_params"]["num_chapters"] == 36
+assert "llm_configs" in saved
+```
+
+Pydantic 字段约束应有错误路径测试，示例来自 `tests/test_api_project_config.py`：
+
+```python
+response = client.put(
+    "/api/project-config",
+    json={"outputPath": "", "novelParams": {"numChapters": -1, "wordNumber": 3000}},
+)
+assert response.status_code == 422
+```
+
+文件系统接口测试要同时检查响应和磁盘结果，示例来自 `tests/test_api_role_library.py`：
+
+```python
+save_response = client.put("/api/roles/主角/林澈", json={"content": "新内容"})
+assert save_response.status_code == 200
+assert (role_dir / "林澈.txt").read_text(encoding="utf-8") == "新内容"
+```
