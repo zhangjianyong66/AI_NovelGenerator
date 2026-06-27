@@ -228,3 +228,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: 补齐 Trellis 后端规范
+
+**Date**: 2026-06-28
+**Task**: 补齐 Trellis 后端规范
+**Branch**: `main`
+
+### Summary
+
+补齐 bootstrap guidelines：新增数据库/持久化真实状态规范，给后端目录、配置、错误处理、日志和质量规范加入代码示例，并完成任务归档前验证。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7ce5730` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
