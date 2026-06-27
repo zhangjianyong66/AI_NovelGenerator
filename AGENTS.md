@@ -15,6 +15,7 @@
 - `frontend/` 是与现有 Python GUI 并行演进的 Tauri 2 + Vue 3 + TypeScript + Vite 前端工程；不会替代 `python main.py`。
 - 前端依赖通过 `cd frontend && npm install` 安装；常用命令包括 `npm run dev`、`npm run typecheck`、`npm run build` 和 `npm run tauri:dev`。
 - 前后端联调可从项目根目录运行 `./scripts/dev.sh`，脚本会同时启动 `uvicorn app.api.server:app` 和 `frontend` Vite dev server，并设置 `VITE_API_BASE_URL` 指向本地 API；可用 `API_HOST`、`API_PORT`、`FRONTEND_HOST`、`FRONTEND_PORT` 覆盖默认 `127.0.0.1:8000` 和 `127.0.0.1:1420`。
+- `./scripts/dev.sh` 启动后端和健康检查时会按 `PYTHON` 环境变量、`.venv/bin/python`、`venv/bin/python`、`python3`、`python` 的顺序选择解释器；如需指定虚拟环境解释器，可用 `PYTHON=/path/to/python ./scripts/dev.sh` 覆盖。
 - 前端源码目录约定：`src/router/` 管理路由，`src/layouts/` 管理应用壳层，`src/pages/` 放页面，`src/components/` 放通用组件，`src/features/` 放业务 feature 模块，`src/stores/` 放 Pinia UI 状态，`src/services/` 放类型和 mock service，`src/styles/` 放全局样式 token。
 - 前端通用 UI 组件集中放在 `frontend/src/components/ui/`，当前包括 `PageHeader`、`ActionBar`、`StatusMessage`、`FormSection`、`Tabs`、`LongTextEditor`、`ConfirmPanel`、`AppButton`、`IconButton`、字段组件、`Toolbar`、`SplitPane`、空/加载/保存状态组件；新增页面应优先复用这些组件来呈现页面标题、操作栏、状态提示、表单分组、tabs、长文本编辑/查看和破坏性操作确认。
 - 前端写作编辑相关业务组件放在 `frontend/src/features/writing/`；`WritingEditor` 是章节正文和核心项目文件编辑的适配层，第一阶段底层仍是增强版 `textarea`，页面不应直接依赖底层编辑器实现。

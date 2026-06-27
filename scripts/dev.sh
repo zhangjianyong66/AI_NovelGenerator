@@ -7,6 +7,45 @@ API_PORT="${API_PORT:-8000}"
 FRONTEND_HOST="${FRONTEND_HOST:-127.0.0.1}"
 FRONTEND_PORT="${FRONTEND_PORT:-1420}"
 
+resolve_python() {
+  if [[ -n "${PYTHON:-}" ]]; then
+    if [[ ! -x "${PYTHON}" ]]; then
+      echo "指定的 Python 解释器不可执行：${PYTHON}" >&2
+      exit 127
+    fi
+    echo "${PYTHON}"
+  elif [[ -x "${ROOT_DIR}/.venv/bin/python" ]]; then
+    echo "${ROOT_DIR}/.venv/bin/python"
+  elif [[ -x "${ROOT_DIR}/venv/bin/python" ]]; then
+    echo "${ROOT_DIR}/venv/bin/python"
+  elif command -v python3 >/dev/null 2>&1; then
+    command -v python3
+  elif command -v python >/dev/null 2>&1; then
+    command -v python
+  else
+    echo "未找到 Python 解释器。请先安装 python3，或使用 PYTHON=/path/to/python 指定解释器。" >&2
+    exit 127
+  fi
+}
+
+PYTHON_BIN="$(resolve_python)"
+
+if ! "${PYTHON_BIN}" -c "import uvicorn" >/dev/null 2>&1; then
+  echo "当前 Python 解释器缺少 uvicorn：${PYTHON_BIN}" >&2
+  echo "请先安装依赖：${PYTHON_BIN} -m pip install -r requirements.txt" >&2
+  exit 1
+fi
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "未找到 npm。请先安装 Node.js 和 npm。" >&2
+  exit 127
+fi
+
+if [[ ! -d "${ROOT_DIR}/frontend/node_modules" ]]; then
+  echo "前端依赖尚未安装。请先运行：cd frontend && npm install" >&2
+  exit 1
+fi
+
 BACKEND_PID=""
 FRONTEND_PID=""
 
@@ -21,32 +60,43 @@ cleanup() {
 
 wait_for_backend() {
   local url="http://${API_HOST}:${API_PORT}/health"
-  python - "$url" <<'PY'
+  local deadline=$((SECONDS + 30))
+
+  while (( SECONDS < deadline )); do
+    if [[ -n "${BACKEND_PID}" ]] && ! kill -0 "${BACKEND_PID}" 2>/dev/null; then
+      echo "后端服务启动失败，请检查上方 uvicorn 输出。" >&2
+      return 1
+    fi
+
+    if "${PYTHON_BIN}" - "$url" <<'PY'
 import sys
-import time
-from urllib.error import URLError
 from urllib.request import urlopen
 
 url = sys.argv[1]
-deadline = time.monotonic() + 30
-while time.monotonic() < deadline:
-    try:
-        with urlopen(url, timeout=1) as response:
-            if response.status == 200:
-                sys.exit(0)
-    except URLError:
-        pass
-    time.sleep(0.5)
+try:
+    with urlopen(url, timeout=1) as response:
+        if response.status == 200:
+            sys.exit(0)
+except Exception:
+    pass
 
-print(f"后端服务启动超时：{url}", file=sys.stderr)
 sys.exit(1)
 PY
+    then
+      return 0
+    fi
+
+    sleep 0.5
+  done
+
+  echo "后端服务启动超时：${url}" >&2
+  return 1
 }
 
 trap cleanup EXIT INT TERM
 
 cd "${ROOT_DIR}"
-python -m uvicorn app.api.server:app --reload --host "${API_HOST}" --port "${API_PORT}" &
+"${PYTHON_BIN}" -m uvicorn app.api.server:app --reload --host "${API_HOST}" --port "${API_PORT}" &
 BACKEND_PID=$!
 
 wait_for_backend
