@@ -261,3 +261,34 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: 完成 Trellis 入门任务
+
+**Date**: 2026-06-28
+**Task**: 完成 Trellis 入门任务
+**Branch**: `main`
+
+### Summary
+
+确认已完成 Trellis onboarding，归档 00-join-zhangjianyong，无业务代码改动。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
