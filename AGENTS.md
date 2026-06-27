@@ -20,7 +20,7 @@
 - 前端通用 UI 组件集中放在 `frontend/src/components/ui/`，当前包括 `PageHeader`、`ActionBar`、`StatusMessage`、`FormSection`、`Tabs`、`LongTextEditor`、`ConfirmPanel`、`AppButton`、`IconButton`、字段组件、`Toolbar`、`SplitPane`、空/加载/保存状态组件；新增页面应优先复用这些组件来呈现页面标题、操作栏、状态提示、表单分组、tabs、长文本编辑/查看和破坏性操作确认。
 - 前端写作编辑相关业务组件放在 `frontend/src/features/writing/`；`WritingEditor` 是章节正文和核心项目文件编辑的适配层，第一阶段底层仍是增强版 `textarea`，页面不应直接依赖底层编辑器实现。
 - 前端主导航顺序按写作流程组织为：项目 → 工作台 → 章节编辑 → 生成任务 → 知识库 → 设置；页面标题和信息架构应继续遵循该流程。
-- 工作台页使用 `features/writing` 中的 `WorkbenchLayout` 三轨结构：左轨放项目文件和章节导航，中间放 `WritingEditor`，右轨放上下文资料、生成动作、任务状态和日志摘要；Tauri 窗口 `minWidth` 当前为 900，以支持窄桌面降级。
+- 工作台页使用 `features/writing` 中的 `WorkbenchLayout` 三轨结构：左轨放项目文件和章节导航，中间放 `WritingEditor` 编辑核心项目文件，右轨放上下文资料、任务状态和日志摘要；章节正文编辑与保存由独立“章节编辑”页负责。Tauri 窗口 `minWidth` 当前为 900，以支持窄桌面降级。
 - 全局应用壳层 `frontend/src/layouts/AppLayout.vue` 支持左侧主导航和右侧项目状态栏折叠；左侧折叠后保留 64px 图标栏，右侧折叠后隐藏项目状态栏。折叠偏好保存在浏览器 `localStorage`，key 为 `ai-novel-generator.layout.navCollapsed` 和 `ai-novel-generator.layout.contextCollapsed`。
 - 前端生成任务业务组件放在 `frontend/src/features/generation/`，当前包括生成动作组、任务列表和任务详情/日志查看；知识库业务组件放在 `frontend/src/features/knowledge/`，当前包括知识文件列表和角色库编辑器。生成页、知识库页应优先复用这些 feature 组件，避免在页面内重复维护任务状态标签、日志查看、角色列表和角色编辑模板。
 - 设置页按 tabs 分组为项目参数、LLM、Embedding、阶段模型/代理、WebDAV；知识库页按 tabs 分组为知识文件、剧情要点、角色库；生成页分为任务创建、批量参数、任务列表、任务详情/日志区域。
@@ -36,6 +36,7 @@
 - 前端真实 API 地址默认使用 `http://127.0.0.1:8000`；如需修改，在 `frontend/.env.local` 中设置 `VITE_API_BASE_URL`。
 - 前端真实/Mock 数据访问应通过 `frontend/src/services/serviceBridge.ts` 统一进入，页面和 store 不应新增对 `mockApi` 的直接依赖。
 - 当前前端已开始通过 `src/services/serviceBridge.ts` 调用真实本地后端；后端不可用时允许降级到 `src/services/mockApi.ts` 展示数据，但真实保存类操作应走后端接口，不应让页面直接调用 mock。
+- `frontend/src/services/serviceBridge.ts` 也是前端后端模式与写操作守卫的统一来源；页面需要使用 `getModeLabel`、`canWrite`、`getWriteUnavailableMessage` 这类共享判断来展示“本地后端已连接/离线预览/本地后端未连接”，并在非真实后端模式下禁用保存、导入、生成、WebDAV 等写操作。
 - 前端构建产物和安装产物已忽略：`frontend/node_modules/`、`frontend/dist/`、`frontend/src-tauri/target/` 不应提交。
 - 当前测试可用 `python -m pytest tests` 运行；若环境缺少 pytest，先安装测试依赖或使用项目环境中的测试工具。
 - 架构重构计划放在 `docs/superpowers/plans/`；主计划为 `2026-06-24-architecture-refactor.md`，执行时先读取主计划和对应 milestone 子计划。

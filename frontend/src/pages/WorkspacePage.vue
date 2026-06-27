@@ -4,12 +4,19 @@
       <template #actions>
         <ActionBar align="end">
           <button class="ghost-button" type="button" @click="reloadWorkspace">刷新</button>
-          <button class="primary-button" :disabled="isSaving || !activeProjectFile" type="button" @click="saveActiveProjectFile">
+          <button
+            class="primary-button"
+            :disabled="isSaving || !activeProjectFile || !canWriteToBackend"
+            type="button"
+            @click="saveActiveProjectFile"
+          >
             保存当前文件
           </button>
         </ActionBar>
       </template>
     </PageHeader>
+
+    <StatusMessage v-if="!canWriteToBackend" type="warning" :message="writeUnavailableMessage" />
 
     <div class="grid three workspace-metrics">
       <MetricTile label="当前章节" :value="activeChapter ? `第 ${activeChapter.order} 章` : '-'" />
@@ -29,7 +36,7 @@
                 class="file-tab"
                 :class="{ active: file.id === activeProjectFile?.id }"
                 type="button"
-                @click="editorStore.selectProjectFile(file.id)"
+                @click="selectProjectFile(file.id)"
               >
                 <span>{{ file.label }}</span>
                 <small>{{ file.wordCount }} 字</small>
@@ -65,6 +72,7 @@
             :title="activeProjectFile?.label ?? '核心文件'"
             :subtitle="activeProjectFile?.filename ?? '等待加载'"
             :dirty="hasDirtyProjectFile"
+            :readonly="!canWriteToBackend"
             :save-state="saveState"
             empty-message="当前核心文件暂无内容。"
             min-height="560px"
@@ -72,7 +80,12 @@
             @update:model-value="editorStore.updateActiveProjectFileDraft"
           >
             <template #actions>
-              <button class="primary-button" :disabled="isSaving || !activeProjectFile" type="button" @click="saveActiveProjectFile">
+              <button
+                class="primary-button"
+                :disabled="isSaving || !activeProjectFile || !canWriteToBackend"
+                type="button"
+                @click="saveActiveProjectFile"
+              >
                 {{ isSaving ? '保存中' : '保存' }}
               </button>
             </template>
@@ -96,17 +109,6 @@
               <dd>{{ activeChapter.viewpoint }}</dd>
             </dl>
             <p class="muted">{{ activeChapter?.synopsis || '暂无章节简述。' }}</p>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-body">
-            <h3 class="panel-title">生成动作</h3>
-            <div class="generation-actions">
-              <button v-for="action in actions" :key="action" class="ghost-button" type="button">
-                {{ action }}
-              </button>
-            </div>
           </div>
         </section>
 
@@ -144,18 +146,22 @@ import ActionBar from '@/components/ui/ActionBar.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import StatusMessage from '@/components/ui/StatusMessage.vue'
 import { WorkbenchLayout, WritingEditor } from '@/features/writing'
+import { serviceBridge, type ServiceBridgeStatus } from '@/services/serviceBridge'
+import type { ProjectFileId } from '@/services/types'
 import { useEditorStore } from '@/stores/editor'
 import { useGenerationStore } from '@/stores/generation'
 import { useProjectsStore } from '@/stores/projects'
 
-const actions = ['生成设定', '扩展目录', '生成草稿', '润色定稿', '批量生成']
 const saveMessage = ref('')
 const errorMessage = ref('')
+const bridgeStatus = ref<ServiceBridgeStatus>({ ...serviceBridge.getStatus() })
 const saveState = computed(() => {
   if (isSaving.value) return { state: 'saving' as const, text: '保存中' }
   if (saveMessage.value) return { state: 'saved' as const, text: saveMessage.value }
   return null
 })
+const canWriteToBackend = computed(() => serviceBridge.canWrite(bridgeStatus.value))
+const writeUnavailableMessage = computed(() => serviceBridge.getWriteUnavailableMessage(bridgeStatus.value))
 
 const projectsStore = useProjectsStore()
 const editorStore = useEditorStore()
@@ -174,31 +180,61 @@ const {
 } = storeToRefs(editorStore)
 const { runningJob, latestLogLines } = storeToRefs(generationStore)
 
+const syncBridgeStatus = () => {
+  bridgeStatus.value = { ...serviceBridge.getStatus() }
+}
+
 const loadWorkspace = async () => {
   await projectsStore.loadProjects()
+  syncBridgeStatus()
   await Promise.all([
     editorStore.loadChapters(activeProjectId.value),
     editorStore.loadProjectFiles(),
     generationStore.loadJobs(activeProjectId.value),
   ])
+  syncBridgeStatus()
 }
 
 onMounted(loadWorkspace)
 
 const reloadWorkspace = async () => {
+  if (!confirmDirtyProjectFileNavigation()) return
   saveMessage.value = ''
   errorMessage.value = ''
   await loadWorkspace()
+}
+
+const confirmDirtyProjectFileNavigation = () => {
+  if (!hasDirtyProjectFile.value) return true
+  const shouldDiscard = window.confirm('当前核心项目文件有未保存变更，继续切换将丢弃这些变更。')
+  if (shouldDiscard) {
+    editorStore.discardProjectFileDrafts()
+  }
+  return shouldDiscard
+}
+
+const selectProjectFile = (fileId: ProjectFileId) => {
+  if (!confirmDirtyProjectFileNavigation()) return
+  editorStore.selectProjectFile(fileId)
+  saveMessage.value = ''
+  errorMessage.value = ''
 }
 
 const saveActiveProjectFile = async () => {
   saveMessage.value = ''
   errorMessage.value = ''
 
+  if (!canWriteToBackend.value) {
+    errorMessage.value = writeUnavailableMessage.value
+    return
+  }
+
   try {
     await editorStore.saveActiveProjectFile()
+    syncBridgeStatus()
     saveMessage.value = '已保存'
   } catch (error) {
+    syncBridgeStatus()
     errorMessage.value =
       error instanceof Error
         ? error.message
@@ -223,8 +259,7 @@ const saveActiveProjectFile = async () => {
 }
 
 .file-list,
-.chapter-list,
-.generation-actions {
+.chapter-list {
   display: grid;
   gap: var(--space-3);
 }

@@ -3,6 +3,7 @@
     <PageHeader title="知识库" subtitle="导入知识文件、查看剧情要点，并维护当前项目角色库。" />
 
     <StatusMessage v-if="isBusy" type="loading" message="正在处理知识库操作。" />
+    <StatusMessage v-if="!canWriteToBackend" type="warning" :message="writeUnavailableMessage" />
     <StatusMessage type="success" :message="message" />
     <StatusMessage type="error" :message="errorMessage" />
 
@@ -10,7 +11,12 @@
       <div v-if="activeTab === 'files'" class="tab-stack">
         <FormSection title="知识文件" description="导入资料到当前输出目录的向量库，并查看已知知识文件。">
           <template #actions>
-            <button class="primary-button" :disabled="isBusy || !importPath" type="button" @click="importKnowledgeFile">
+            <button
+              class="primary-button"
+              :disabled="isBusy || !importPath || !canWriteToBackend"
+              type="button"
+              @click="importKnowledgeFile"
+            >
               <Upload :size="16" />
               导入资料
             </button>
@@ -24,7 +30,7 @@
           title="清理向量库"
           description="将删除当前输出目录下的 vectorstore 数据。切换 Embedding 模型后通常需要执行此操作。"
           action-label="清理"
-          :disabled="isBusy"
+          :disabled="isBusy || !canWriteToBackend"
           @confirm="clearVectorstore"
         />
 
@@ -47,14 +53,21 @@
 
       <FormSection v-if="activeTab === 'roles'" title="角色库" description="维护角色文本，并可把选中角色写入章节参数。">
         <template #actions>
-          <button class="ghost-button" type="button" @click="applySelectedRoles">写入章节参数</button>
+          <button
+            class="ghost-button"
+            :disabled="isBusy || selectedRoleIds.length === 0 || !canWriteToBackend"
+            type="button"
+            @click="applySelectedRoles"
+          >
+            写入章节参数
+          </button>
         </template>
         <div class="role-import">
           <TextField v-model.trim="roleImportCategory" label="分类" />
           <TextField v-model.trim="roleImportPath" label="角色文件路径" placeholder="/path/to/role.txt" />
           <button
             class="ghost-button role-import__button"
-            :disabled="!roleImportCategory || !roleImportPath"
+            :disabled="!roleImportCategory || !roleImportPath || !canWriteToBackend"
             type="button"
             @click="importRole"
           >
@@ -66,6 +79,7 @@
           v-model:selected-role-ids="selectedRoleIds"
           :role-categories="roleCategories"
           :active-role="activeRole"
+          :readonly="!canWriteToBackend"
           @load-role="loadRole"
           @save-role="saveRole"
         />
@@ -86,7 +100,7 @@ import StatusMessage from '@/components/ui/StatusMessage.vue'
 import Tabs from '@/components/ui/Tabs.vue'
 import TextField from '@/components/ui/TextField.vue'
 import { KnowledgeFileList, RoleLibraryEditor } from '@/features/knowledge'
-import { serviceBridge } from '@/services/serviceBridge'
+import { serviceBridge, type ServiceBridgeStatus } from '@/services/serviceBridge'
 import type { KnowledgeItem, PlotArcs, RoleCategory, RoleDetail } from '@/services/types'
 
 type KnowledgeTab = 'files' | 'plot' | 'roles'
@@ -109,10 +123,18 @@ const importPath = ref('')
 const message = ref('')
 const errorMessage = ref('')
 const isBusy = ref(false)
+const bridgeStatus = ref<ServiceBridgeStatus>({ ...serviceBridge.getStatus() })
 const files = computed(() => items.value.filter((item) => item.type === 'file'))
+const canWriteToBackend = computed(() => serviceBridge.canWrite(bridgeStatus.value))
+const writeUnavailableMessage = computed(() => serviceBridge.getWriteUnavailableMessage(bridgeStatus.value))
+
+const syncBridgeStatus = () => {
+  bridgeStatus.value = { ...serviceBridge.getStatus() }
+}
 
 onMounted(async () => {
   await Promise.all([loadKnowledgeItems(), loadPlotArcs(), loadRoles()])
+  syncBridgeStatus()
 })
 
 const setError = (error: unknown, fallback: string) => {
@@ -125,6 +147,11 @@ const setError = (error: unknown, fallback: string) => {
 }
 
 const runOperation = async (operation: () => Promise<void>, fallback: string) => {
+  if (!canWriteToBackend.value) {
+    message.value = ''
+    errorMessage.value = writeUnavailableMessage.value
+    return
+  }
   isBusy.value = true
   message.value = ''
   errorMessage.value = ''
@@ -133,20 +160,24 @@ const runOperation = async (operation: () => Promise<void>, fallback: string) =>
   } catch (error) {
     setError(error, fallback)
   } finally {
+    syncBridgeStatus()
     isBusy.value = false
   }
 }
 
 const loadKnowledgeItems = async () => {
   items.value = await serviceBridge.listKnowledgeItems()
+  syncBridgeStatus()
 }
 
 const loadPlotArcs = async () => {
   plotArcs.value = await serviceBridge.getPlotArcs()
+  syncBridgeStatus()
 }
 
 const loadRoles = async () => {
   roleCategories.value = await serviceBridge.listRoles()
+  syncBridgeStatus()
 }
 
 const importKnowledgeFile = async () => {
@@ -167,6 +198,7 @@ const clearVectorstore = async () => {
 
 const loadRole = async (category: string, roleName: string) => {
   activeRole.value = await serviceBridge.getRole(category, roleName)
+  syncBridgeStatus()
   roleContent.value = activeRole.value.content
 }
 

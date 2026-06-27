@@ -147,6 +147,11 @@ export const useEditorStore = defineStore('editor', {
     updateActiveProjectFileDraft(content: string) {
       this.projectFileDrafts[this.activeProjectFileId] = content
     },
+    discardProjectFileDrafts() {
+      this.projectFileDrafts = Object.fromEntries(
+        this.projectFiles.map((file) => [file.id, file.content]),
+      ) as Record<ProjectFileId, string>
+    },
     async saveActiveProjectFile() {
       const activeFile = this.activeProjectFile
       if (!activeFile) return

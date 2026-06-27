@@ -3,10 +3,12 @@
     <PageHeader title="生成任务" subtitle="创建后端生成任务，查看状态、日志和错误。" />
 
     <StatusMessage v-if="isLoading" type="loading" message="正在同步生成任务状态。" />
+    <StatusMessage type="warning" message="当前接口只创建排队任务，尚未接入真实 LLM 执行器，不会直接生成或修改小说文件。" />
+    <StatusMessage v-if="!canWriteToBackend" type="warning" :message="writeUnavailableMessage" />
     <StatusMessage type="error" :message="errorMessage" />
 
     <FormSection title="创建任务" description="后端会按当前项目配置创建任务；草稿、定稿和审校会使用当前章节号。">
-      <GenerationActions :disabled="isLoading" @create="createJob" @create-batch="createBatchJob" />
+      <GenerationActions :disabled="isLoading || !canWriteToBackend" @create="createJob" @create-batch="createBatchJob" />
     </FormSection>
 
     <FormSection title="批量参数" description="批量生成会使用下列章节范围、目标字数、最低字数和自动扩写设置。">
@@ -66,7 +68,7 @@ import StatusMessage from '@/components/ui/StatusMessage.vue'
 import TextField from '@/components/ui/TextField.vue'
 import ToggleField from '@/components/ui/ToggleField.vue'
 import { GenerationActions, GenerationJobDetail, GenerationJobList } from '@/features/generation'
-import { serviceBridge } from '@/services/serviceBridge'
+import { serviceBridge, type ServiceBridgeStatus } from '@/services/serviceBridge'
 import type { GenerationStage } from '@/services/types'
 import { useGenerationStore } from '@/stores/generation'
 import { useProjectsStore } from '@/stores/projects'
@@ -76,6 +78,7 @@ const generationStore = useGenerationStore()
 const { jobs, isLoading } = storeToRefs(generationStore)
 const errorMessage = ref('')
 const selectedJobId = ref('')
+const bridgeStatus = ref<ServiceBridgeStatus>({ ...serviceBridge.getStatus() })
 const batchForm = ref({
   startChapter: 1,
   endChapter: 1,
@@ -83,10 +86,18 @@ const batchForm = ref({
   minimumWords: 2000,
   autoEnrich: false,
 })
+const canWriteToBackend = computed(() => serviceBridge.canWrite(bridgeStatus.value))
+const writeUnavailableMessage = computed(() => serviceBridge.getWriteUnavailableMessage(bridgeStatus.value))
+
+const syncBridgeStatus = () => {
+  bridgeStatus.value = { ...serviceBridge.getStatus() }
+}
 
 onMounted(async () => {
   await projectsStore.loadProjects()
+  syncBridgeStatus()
   await generationStore.loadJobs(projectsStore.activeProjectId)
+  syncBridgeStatus()
   selectedJobId.value = jobs.value[0]?.id ?? ''
 })
 
@@ -94,6 +105,10 @@ const selectedJob = computed(() => jobs.value.find((job) => job.id === selectedJ
 
 const createJob = async (stage: GenerationStage) => {
   errorMessage.value = ''
+  if (!canWriteToBackend.value) {
+    errorMessage.value = writeUnavailableMessage.value
+    return
+  }
   try {
     const projectConfig = await serviceBridge.getProjectConfig()
     await generationStore.createJob({
@@ -103,8 +118,10 @@ const createJob = async (stage: GenerationStage) => {
         ? Number(projectConfig.novelParams.chapterNum || 0)
         : undefined,
     })
+    syncBridgeStatus()
     selectedJobId.value = jobs.value[0]?.id ?? selectedJobId.value
   } catch (error) {
+    syncBridgeStatus()
     errorMessage.value =
       error instanceof Error
         ? error.message
@@ -116,14 +133,20 @@ const createJob = async (stage: GenerationStage) => {
 
 const createBatchJob = async () => {
   errorMessage.value = ''
+  if (!canWriteToBackend.value) {
+    errorMessage.value = writeUnavailableMessage.value
+    return
+  }
   try {
     await generationStore.createJob({
       projectId: projectsStore.activeProjectId,
       stage: 'batch',
       ...batchForm.value,
     })
+    syncBridgeStatus()
     selectedJobId.value = jobs.value[0]?.id ?? selectedJobId.value
   } catch (error) {
+    syncBridgeStatus()
     errorMessage.value =
       error instanceof Error
         ? error.message

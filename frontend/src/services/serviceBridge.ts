@@ -57,6 +57,17 @@ const status: ServiceBridgeStatus = {
   error: null,
 }
 
+const modeLabels: Record<BackendMode, string> = {
+  backend: '本地后端已连接',
+  disconnected: '本地后端未连接',
+  mock: '离线预览',
+}
+
+const writeUnavailableMessages: Record<Exclude<BackendMode, 'backend'>, string> = {
+  disconnected: '本地后端未连接，不能执行保存、导入或生成操作。',
+  mock: '当前为离线预览数据，不能执行保存、导入或生成操作。',
+}
+
 function normalizeError(error: unknown, fallbackMessage: string, statusCode?: number): ServiceBridgeError {
   if (error instanceof Error) {
     return {
@@ -119,6 +130,19 @@ async function withMockFallback<T>(
 export const serviceBridge = {
   getStatus(): ServiceBridgeStatus {
     return status
+  },
+
+  getModeLabel(mode: BackendMode = status.mode): string {
+    return modeLabels[mode]
+  },
+
+  canWrite(statusSnapshot: ServiceBridgeStatus = status): boolean {
+    return statusSnapshot.mode === 'backend'
+  },
+
+  getWriteUnavailableMessage(statusSnapshot: ServiceBridgeStatus = status): string {
+    if (statusSnapshot.mode === 'backend') return ''
+    return writeUnavailableMessages[statusSnapshot.mode]
   },
 
   async checkHealth(): Promise<ServiceBridgeStatus> {
@@ -270,8 +294,13 @@ export const serviceBridge = {
   },
 
   async getRole(category: string, roleName: string): Promise<RoleDetail> {
-    return requestJson<RoleDetail>(
-      `/api/roles/${encodeURIComponent(category)}/${encodeURIComponent(roleName)}`,
+    return withMockFallback(
+      () =>
+        requestJson<RoleDetail>(
+          `/api/roles/${encodeURIComponent(category)}/${encodeURIComponent(roleName)}`,
+          { allowMockFallback: true },
+        ),
+      () => mockApi.getRole(category, roleName),
     )
   },
 

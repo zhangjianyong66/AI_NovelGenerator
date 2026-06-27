@@ -10,6 +10,7 @@
     </PageHeader>
 
     <StatusMessage v-if="isSaving" type="loading" message="正在提交配置操作。" />
+    <StatusMessage v-if="!canWriteToBackend" type="warning" :message="writeUnavailableMessage" />
     <StatusMessage type="success" :message="saveMessage" />
     <StatusMessage type="error" :message="errorMessage" />
 
@@ -48,7 +49,7 @@
           <AppButton variant="ghost" :disabled="modelSettings.llmConfigs.length <= 1" @click="deleteSelectedLlmConfig">
             删除
           </AppButton>
-          <AppButton variant="ghost" @click="testSelectedLlmConfig">测试 LLM</AppButton>
+          <AppButton variant="ghost" :disabled="isSaving || !canWriteToBackend" @click="testSelectedLlmConfig">测试 LLM</AppButton>
         </template>
         <div class="form-grid two">
           <SelectField
@@ -147,8 +148,8 @@
 
       <FormSection v-if="activeTab === 'webdav' && webDavConfig" title="WebDAV" description="用于备份和恢复 config.json。恢复会先在本地 backup/ 下创建备份。">
         <template #actions>
-          <AppButton variant="ghost" :disabled="isSaving" @click="testWebDav">测试连接</AppButton>
-          <AppButton variant="ghost" :disabled="isSaving" @click="backupWebDav">备份</AppButton>
+          <AppButton variant="ghost" :disabled="isSaving || !canWriteToBackend" @click="testWebDav">测试连接</AppButton>
+          <AppButton variant="ghost" :disabled="isSaving || !canWriteToBackend" @click="backupWebDav">备份</AppButton>
         </template>
         <div class="form-grid three">
           <TextField v-model="webDavConfig.webdavUrl" label="WebDAV URL" />
@@ -165,7 +166,7 @@
           title="从 WebDAV 恢复配置"
           description="本地配置会先备份再替换，请确认远程备份是你希望恢复的版本。"
           action-label="恢复"
-          :disabled="isSaving"
+          :disabled="isSaving || !canWriteToBackend"
           @confirm="restoreWebDav"
         />
       </FormSection>
@@ -187,7 +188,7 @@ import Tabs from '@/components/ui/Tabs.vue'
 import TextAreaField from '@/components/ui/TextAreaField.vue'
 import TextField from '@/components/ui/TextField.vue'
 import ToggleField from '@/components/ui/ToggleField.vue'
-import { serviceBridge } from '@/services/serviceBridge'
+import { serviceBridge, type ServiceBridgeStatus } from '@/services/serviceBridge'
 import type { ModelSettings, ProjectConfig, StageModelSelection, WebDavConfig } from '@/services/types'
 
 type SettingsTab = 'project' | 'llm' | 'embedding' | 'stage' | 'webdav'
@@ -206,6 +207,7 @@ const webDavConfig = ref<WebDavConfig>()
 const isSaving = ref(false)
 const saveMessage = ref('')
 const errorMessage = ref('')
+const bridgeStatus = ref<ServiceBridgeStatus>({ ...serviceBridge.getStatus() })
 
 const stageOptions: Array<{ key: keyof StageModelSelection; label: string }> = [
   { key: 'promptDraft', label: '提示词草稿' },
@@ -215,7 +217,13 @@ const stageOptions: Array<{ key: keyof StageModelSelection; label: string }> = [
   { key: 'consistencyReview', label: '一致性审校' },
 ]
 
-const canSave = computed(() => Boolean(projectConfig.value && modelSettings.value && webDavConfig.value))
+const canWriteToBackend = computed(() => serviceBridge.canWrite(bridgeStatus.value))
+const writeUnavailableMessage = computed(() => serviceBridge.getWriteUnavailableMessage(bridgeStatus.value))
+const canSave = computed(() => Boolean(projectConfig.value && modelSettings.value && webDavConfig.value && canWriteToBackend.value))
+
+const syncBridgeStatus = () => {
+  bridgeStatus.value = { ...serviceBridge.getStatus() }
+}
 
 const selectedLlmConfig = computed(() =>
   modelSettings.value?.llmConfigs.find((item) => item.name === modelSettings.value?.selectedLlmConfig),
@@ -251,6 +259,7 @@ const loadSettings = async () => {
   projectConfig.value = loadedProjectConfig
   modelSettings.value = loadedModelSettings
   webDavConfig.value = loadedWebDavConfig
+  syncBridgeStatus()
 }
 
 onMounted(async () => {
@@ -313,6 +322,10 @@ const syncStageSelection = () => {
 
 const testSelectedLlmConfig = async () => {
   if (!modelSettings.value?.selectedLlmConfig) return
+  if (!canWriteToBackend.value) {
+    errorMessage.value = writeUnavailableMessage.value
+    return
+  }
   isSaving.value = true
   saveMessage.value = ''
   errorMessage.value = ''
@@ -323,12 +336,17 @@ const testSelectedLlmConfig = async () => {
   } catch (error) {
     setError(error, '测试 LLM 失败')
   } finally {
+    syncBridgeStatus()
     isSaving.value = false
   }
 }
 
 const saveAll = async () => {
   if (!projectConfig.value || !modelSettings.value || !webDavConfig.value) return
+  if (!canWriteToBackend.value) {
+    errorMessage.value = writeUnavailableMessage.value
+    return
+  }
 
   isSaving.value = true
   saveMessage.value = ''
@@ -347,11 +365,16 @@ const saveAll = async () => {
   } catch (error) {
     setError(error, '保存失败')
   } finally {
+    syncBridgeStatus()
     isSaving.value = false
   }
 }
 
 const runWebDavOperation = async (operation: () => Promise<{ success: boolean; message: string }>) => {
+  if (!canWriteToBackend.value) {
+    errorMessage.value = writeUnavailableMessage.value
+    return
+  }
   isSaving.value = true
   saveMessage.value = ''
   errorMessage.value = ''
@@ -362,6 +385,7 @@ const runWebDavOperation = async (operation: () => Promise<{ success: boolean; m
   } catch (error) {
     setError(error, 'WebDAV 操作失败')
   } finally {
+    syncBridgeStatus()
     isSaving.value = false
   }
 }

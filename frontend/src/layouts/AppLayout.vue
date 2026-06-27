@@ -61,6 +61,7 @@
     <aside class="context-panel">
       <section class="context-section">
         <h2>当前项目</h2>
+        <p v-if="!canWriteToBackend" class="mode-note">{{ writeUnavailableMessage }}</p>
         <template v-if="activeProject">
           <strong>{{ activeProject.title }}</strong>
           <p>{{ activeProject.summary }}</p>
@@ -168,14 +169,10 @@ const navItems = [
 
 const currentTitle = computed(() => String(route.meta.label ?? '项目'))
 const bridgeModeLabel = computed(() => {
-  const labels: Record<ServiceBridgeStatus['mode'], string> = {
-    backend: '本地后端已连接',
-    disconnected: '本地后端未连接',
-    mock: 'Mock fallback',
-  }
-
-  return labels[bridgeStatus.value.mode]
+  return serviceBridge.getModeLabel(bridgeStatus.value.mode)
 })
+const canWriteToBackend = computed(() => serviceBridge.canWrite(bridgeStatus.value))
+const writeUnavailableMessage = computed(() => serviceBridge.getWriteUnavailableMessage(bridgeStatus.value))
 const projectProgress = computed(() => {
   if (!activeProject.value || activeProject.value.chaptersTotal === 0) return '0%'
   return `${Math.round((activeProject.value.chaptersCompleted / activeProject.value.chaptersTotal) * 100)}%`
@@ -316,6 +313,10 @@ watch(
   background: var(--color-danger);
 }
 
+.status-dot.mock {
+  background: var(--color-warning);
+}
+
 .divider {
   width: 1px;
   height: 18px;
@@ -412,6 +413,12 @@ watch(
   color: var(--color-text-muted);
   font-size: 13px;
   line-height: 1.55;
+}
+
+.context-section .mode-note {
+  margin: 0 0 10px;
+  color: var(--color-warning);
+  font-weight: 600;
 }
 
 .progress-row,

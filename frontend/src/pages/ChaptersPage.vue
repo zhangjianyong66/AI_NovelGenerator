@@ -6,7 +6,12 @@
         <button class="ghost-button" type="button" @click="reloadChapters">刷新</button>
         <button class="ghost-button" type="button" @click="selectAdjacentChapter('previous')">上一章</button>
         <button class="ghost-button" type="button" @click="selectAdjacentChapter('next')">下一章</button>
-        <button class="primary-button" :disabled="isSaving || !activeChapter" type="button" @click="saveActiveChapter">
+        <button
+          class="primary-button"
+          :disabled="isSaving || !activeChapter || !canWriteToBackend"
+          type="button"
+          @click="saveActiveChapter"
+        >
           <Save :size="16" />
           {{ isSaving ? '保存中' : '保存草稿' }}
         </button>
@@ -14,10 +19,13 @@
       </template>
     </PageHeader>
 
+    <StatusMessage v-if="!canWriteToBackend" type="warning" :message="writeUnavailableMessage" />
+
     <div class="editor-grid">
       <aside class="panel chapter-list">
         <div class="panel-body">
           <h3 class="panel-title">章节列表</h3>
+          <StatusMessage v-if="chapters.length === 0" type="empty" message="当前输出目录尚未发现 chapter_X.txt，请先准备章节文件。" />
           <ChapterNavigator
             :chapters="chapters"
             :active-chapter-id="activeChapter?.id"
@@ -32,6 +40,7 @@
             :model-value="activeChapterDraft"
             :title="activeChapter?.title ?? '暂无章节'"
             :dirty="hasDirtyChapter"
+            :readonly="!canWriteToBackend || !activeChapter"
             :save-state="saveState"
             empty-message="当前输出目录尚未加载到章节正文。"
             min-height="470px"
@@ -73,6 +82,7 @@ import ActionBar from '@/components/ui/ActionBar.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import StatusMessage from '@/components/ui/StatusMessage.vue'
 import { ChapterNavigator, WritingEditor } from '@/features/writing'
+import { serviceBridge, type ServiceBridgeStatus } from '@/services/serviceBridge'
 import { useEditorStore } from '@/stores/editor'
 import { useProjectsStore } from '@/stores/projects'
 
@@ -88,11 +98,20 @@ const {
 } = storeToRefs(editorStore)
 const saveMessage = ref('')
 const errorMessage = ref('')
+const bridgeStatus = ref<ServiceBridgeStatus>({ ...serviceBridge.getStatus() })
 const saveState = computed(() => (saveMessage.value ? { state: 'saved' as const, text: saveMessage.value } : null))
+const canWriteToBackend = computed(() => serviceBridge.canWrite(bridgeStatus.value))
+const writeUnavailableMessage = computed(() => serviceBridge.getWriteUnavailableMessage(bridgeStatus.value))
+
+const syncBridgeStatus = () => {
+  bridgeStatus.value = { ...serviceBridge.getStatus() }
+}
 
 onMounted(async () => {
   await projectsStore.loadProjects()
+  syncBridgeStatus()
   await editorStore.loadChapters(projectsStore.activeProjectId)
+  syncBridgeStatus()
 })
 
 const confirmDirtyNavigation = () => {
@@ -121,12 +140,21 @@ const selectAdjacentChapter = (direction: 'previous' | 'next') => {
 const saveActiveChapter = async () => {
   saveMessage.value = ''
   errorMessage.value = ''
+  if (!canWriteToBackend.value) {
+    errorMessage.value = writeUnavailableMessage.value
+    return
+  }
+
   try {
     await editorStore.saveActiveChapter()
+    syncBridgeStatus()
     saveMessage.value = '已保存'
   } catch (error) {
+    syncBridgeStatus()
     errorMessage.value =
-      error instanceof Error
+      typeof error === 'object' && error !== null && 'status' in error && error.status === 404
+        ? '章节文件不存在，请先在输出目录准备对应的 chapter_X.txt。'
+        : error instanceof Error
         ? error.message
         : typeof error === 'object' && error !== null && 'message' in error
           ? String(error.message)
@@ -137,6 +165,7 @@ const saveActiveChapter = async () => {
 const reloadChapters = async () => {
   if (!confirmDirtyNavigation()) return
   await editorStore.loadChapters(projectsStore.activeProjectId)
+  syncBridgeStatus()
 }
 
 onBeforeRouteLeave(() => confirmDirtyNavigation())

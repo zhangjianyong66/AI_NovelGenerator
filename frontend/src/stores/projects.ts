@@ -6,7 +6,7 @@ import type { Project } from '@/services/types'
 export const useProjectsStore = defineStore('projects', {
   state: () => ({
     projects: [] as Project[],
-    activeProjectId: 'p-ember-city',
+    activeProjectId: '',
     isLoading: false,
   }),
   getters: {
@@ -20,7 +20,7 @@ export const useProjectsStore = defineStore('projects', {
       this.isLoading = true
       try {
         this.projects = await serviceBridge.listProjects()
-        if (!this.activeProjectId && this.projects[0]) {
+        if (!this.projects.some((project) => project.id === this.activeProjectId) && this.projects[0]) {
           this.activeProjectId = this.projects[0].id
         }
       } finally {

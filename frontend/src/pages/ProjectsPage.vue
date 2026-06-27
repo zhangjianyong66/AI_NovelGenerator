@@ -1,13 +1,9 @@
 <template>
   <section class="page">
     <PageHeader title="项目" subtitle="按小说项目进入工作台，并查看当前后端输出路径与小说参数。">
-      <template #actions>
-      <button class="primary-button" type="button">
-        <Plus :size="16" />
-        新建项目
-      </button>
-      </template>
     </PageHeader>
+
+    <StatusMessage v-if="!canWriteToBackend" type="warning" :message="writeUnavailableMessage" />
 
     <section v-if="projectConfig" class="panel">
       <div class="panel-body">
@@ -56,26 +52,39 @@
 </template>
 
 <script setup lang="ts">
-import { Plus } from '@lucide/vue'
 import { storeToRefs } from 'pinia'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import PageHeader from '@/components/ui/PageHeader.vue'
-import { serviceBridge } from '@/services/serviceBridge'
+import StatusMessage from '@/components/ui/StatusMessage.vue'
+import { serviceBridge, type ServiceBridgeStatus } from '@/services/serviceBridge'
 import { useProjectsStore } from '@/stores/projects'
 import type { ProjectConfig, ProjectStatus } from '@/services/types'
 
 const projectsStore = useProjectsStore()
 const { projects, activeProjectId } = storeToRefs(projectsStore)
 const projectConfig = ref<ProjectConfig>()
+const bridgeStatus = ref<ServiceBridgeStatus>({ ...serviceBridge.getStatus() })
+const canWriteToBackend = computed(() => serviceBridge.canWrite(bridgeStatus.value))
+const writeUnavailableMessage = computed(() => serviceBridge.getWriteUnavailableMessage(bridgeStatus.value))
+
+const syncBridgeStatus = () => {
+  bridgeStatus.value = { ...serviceBridge.getStatus() }
+}
 
 onMounted(() => {
-  void projectsStore.loadProjects()
-  void loadProjectConfig()
+  void loadProjectsPage()
 })
 
 const loadProjectConfig = async () => {
   projectConfig.value = await serviceBridge.getProjectConfig()
+  syncBridgeStatus()
+}
+
+const loadProjectsPage = async () => {
+  await projectsStore.loadProjects()
+  syncBridgeStatus()
+  await loadProjectConfig()
 }
 
 const selectProject = (projectId: string) => {

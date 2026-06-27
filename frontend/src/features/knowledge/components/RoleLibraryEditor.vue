@@ -23,12 +23,13 @@
         :model-value="roleContent"
         :title="activeRole?.name ?? '未选择角色'"
         :disabled="!activeRole"
+        :readonly="readonly"
         empty-message="请选择一个角色进行查看或编辑。"
         min-height="300px"
         @update:model-value="$emit('update:roleContent', $event)"
       >
         <template #actions>
-          <AppButton variant="primary" :disabled="!activeRole" @click="$emit('saveRole')">保存角色</AppButton>
+          <AppButton variant="primary" :disabled="!activeRole || readonly" @click="$emit('saveRole')">保存角色</AppButton>
         </template>
       </WritingEditor>
     </div>
@@ -45,6 +46,7 @@ const props = defineProps<{
   activeRole?: RoleDetail
   roleContent: string
   selectedRoleIds: string[]
+  readonly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -61,4 +63,3 @@ const toggleRole = (roleId: string, checked: boolean) => {
   emit('update:selectedRoleIds', Array.from(new Set(nextIds)))
 }
 </script>
-
