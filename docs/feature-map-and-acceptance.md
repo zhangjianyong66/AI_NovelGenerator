@@ -51,7 +51,7 @@ npm run dev
 | 一致性审校 | 检查章节逻辑冲突 | 完整支持 | 仅创建排队任务；不执行审校 | 同上，`consistency` 会检查章节文件 | 只验收任务日志，不期待审校结果 |
 | 核心项目文件 | 查看/编辑设定、目录、角色状态、全局摘要 | 支持 | 真实支持 | `GET /api/project-files`，`PUT /api/project-files/{file_id}` | 在工作台或章节相关页面编辑测试文本并检查文件落盘 |
 | 章节编辑 | 查看/创建/编辑 `chapter_X.txt` | 支持 | 真实支持已有章节和计划章节 | `GET /api/projects/{project_id}/chapters`，`POST/PUT /api/chapters/{chapter_number}` | 目录中有章节但文件缺失时先创建章节文件，再编辑保存并检查文件内容 |
-| 知识文件 | 导入参考资料并参与检索 | 完整支持，真实写入向量库 | 当前导入只是复制文件到 `vectorstore/imported/` | `POST /api/knowledge/import` | 用测试 txt 导入，检查文件被复制 |
+| 知识文件 | 导入参考资料并参与检索 | 完整支持，真实写入向量库 | 真实支持，需要有效 Embedding 配置；导入会写入 Chroma `vectorstore/` 并保留 `vectorstore/imported/` 副本 | `POST /api/knowledge/import` | 用测试 txt 导入，检查文件被复制且知识列表显示“已向量化” |
 | 向量库清理 | 切换 Embedding 后清理旧向量库 | 支持 | 真实删除 `vectorstore/` | `POST /api/knowledge/clear-vectorstore` | 只在临时输出目录测试 |
 | 剧情要点 | 查看 `plot_arcs.txt` | 支持 | 真实读取 | `GET /api/knowledge/plot-arcs` | 准备测试 `plot_arcs.txt` 后查看 |
 | 角色库 | 管理 `角色库/<分类>/<角色名>.txt` | 完整支持，包括较复杂的角色导入/分析 | 支持角色文件导入、查看、保存、写入涉及角色 | `GET/PUT /api/roles/...`，`POST /api/roles/import` | 准备角色 txt，导入后编辑保存 |
@@ -63,7 +63,7 @@ npm run dev
 
 ## 新前端真实可用开发顺序
 
-当前新前端已经能真实读写配置、核心项目文件、章节文件、知识导入文件、角色库文件和 WebDAV 配置；设定/目录、单章草稿/定稿已接入真实生成链路，生成任务历史已落到本地 SQLite 状态库；章节列表可显示从目录或章节数推导出的计划章节，并可从前端创建缺失的 `chapter_X.txt`。继续开发时不要优先扩大视觉重构范围，应继续补齐知识检索和项目管理能力。
+当前新前端已经能真实读写配置、核心项目文件、章节文件、知识导入文件、角色库文件和 WebDAV 配置；设定/目录、单章草稿/定稿已接入真实生成链路，生成任务历史已落到本地 SQLite 状态库；章节列表可显示从目录或章节数推导出的计划章节，并可从前端创建缺失的 `chapter_X.txt`；知识导入已接入当前 Embedding 配置并写入 Chroma 向量库。继续开发时不要优先扩大视觉重构范围，应继续补齐项目管理等真实创作能力。
 
 1. **真实生成执行器最小闭环**
    - 目标：让“生成小说设定”和“生成章节目录”从前端真实调用后端执行器，并写入 `Novel_setting.txt`、`Novel_directory.txt`。
@@ -88,9 +88,10 @@ npm run dev
 
 4. **知识库真实向量化与检索**
    - 目标：知识导入不再只是复制文件，而是完成分块、Embedding、向量库写入和生成时检索。
-   - 后端重点：统一 Embedding provider，导入文件后写入 `vectorstore/`，章节生成时按当前上下文检索相关资料。
+   - 当前状态：已完成最小闭环；前端导入会读取当前选中的 Embedding 配置，调用旧知识库导入逻辑写入 Chroma `vectorstore/`，成功后保留 `vectorstore/imported/` 副本并显示“已向量化”标签。后续仍可补更细的检索命中日志、导入进度和后台队列。
+   - 后端重点：继续统一 Embedding provider，后续可补导入任务状态、检索命中日志和失败恢复。
    - 前端重点：展示导入/向量化状态、失败原因和知识文件是否可用于生成。
-   - 验收：导入测试资料后，后续章节生成日志能显示检索命中，生成内容能参考资料。
+   - 验收：配置有效 Embedding 后导入测试资料，知识列表显示“已向量化”；后续章节草稿生成可复用同一 `vectorstore/` 检索资料。
 
 5. **项目管理能力**
    - 目标：前端不再只围绕 `config.json` 当前输出目录工作，而是支持新建、打开、切换和最近项目。
@@ -117,7 +118,7 @@ npm run dev
 | `character_state.txt` | 角色状态和关系变化 | 旧 GUI Step1/Step4 或角色工具 | 可以作为核心项目文件编辑 | 旧角色库可从此文件分析角色 |
 | `plot_arcs.txt` | 剧情要点、伏笔、冲突记录 | 旧 GUI 定稿/审校相关流程 | 新前端知识库页只读展示 | 文件不存在时应显示空状态 |
 | `vectorstore/` | 向量检索库和导入资料 | 旧 GUI 知识库导入和定稿更新 | 新前端可导入文件和清空目录 | 清空是破坏性操作，只在临时目录测试 |
-| `vectorstore/imported/` | 新前端导入知识文件的落盘位置 | 新前端知识库导入 | 不直接编辑 | 当前只是复制文件，不代表已完成向量化 |
+| `vectorstore/imported/` | 新前端导入知识文件的副本记录 | 新前端知识库导入 | 不直接编辑 | 导入成功表示已写入 `vectorstore/`，该目录只用于展示和追踪源文件副本 |
 | `角色库/<分类>/<角色名>.txt` | 角色资料库 | 旧 GUI 角色库或新前端导入/保存 | 可以查看和保存 | 文件名和分类名会做路径安全校验 |
 | `config.json` | 本地配置、密钥、模型、输出路径、WebDAV | GUI/API 自动读写 | 通过设置页间接编辑 | 已被 `.gitignore` 忽略，不应提交 |
 | `backup/config_*_bak.json` | WebDAV 恢复前的本地配置备份 | WebDAV 恢复流程 | 不编辑 | 恢复配置属于高风险操作 |
@@ -291,7 +292,7 @@ npm install
 进入“知识库”页：
 
 - 知识文件页签中导入 `/tmp/ai-novel-acceptance/knowledge-note.txt`。
-- 检查文件是否复制到 `/tmp/ai-novel-acceptance/vectorstore/imported/knowledge-note.txt`。
+- 配置有效 Embedding 后，检查文件是否复制到 `/tmp/ai-novel-acceptance/vectorstore/imported/knowledge-note.txt`，且知识列表显示“已向量化”。
 - 剧情要点页签应显示 `plot_arcs.txt` 的内容。
 - 角色库页签应显示 `主角/林澈.txt`。
 - 修改角色内容并保存，检查角色文件真实更新。
@@ -299,7 +300,7 @@ npm install
 
 验收标准：
 
-- 知识导入只是复制文件，不代表完成真实向量化。
+- 知识导入需要有效 Embedding 配置；成功后应写入向量库并保留导入副本。
 - 角色文件可以导入、读取和保存。
 - 不要在真实项目上点击清空向量库。
 
@@ -319,7 +320,7 @@ npm install
 
 ## 真实 LLM/Embedding 完整验收
 
-这套验收用于旧 GUI，或新前端已接入真实执行器的阶段。当前新前端可验收“生成小说设定”“生成章节目录”“生成章节草稿”和“章节定稿”；一致性审校、批量生成、知识库向量化仍按旧 GUI 或后续 milestone 验收。执行前需要有效 LLM 配置；涉及知识库检索时还需要可用 Embedding。
+这套验收用于旧 GUI，或新前端已接入真实执行器的阶段。当前新前端可验收“生成小说设定”“生成章节目录”“生成章节草稿”“章节定稿”和“知识库向量化导入”；一致性审校、批量生成仍按旧 GUI 或后续 milestone 验收。执行前需要有效 LLM 配置；涉及知识库导入和检索时还需要可用 Embedding。
 
 建议参数：
 
@@ -366,7 +367,7 @@ npm install
 | 章节列表为空 | 输出目录没有 `chapter_X.txt`，也没有可解析的 `Novel_directory.txt` 或有效章节数 | 先生成/编辑目录，或在设置页填写章节数；也可在章节页创建计划章节文件 |
 | 创建草稿/定稿/审校任务失败 | 当前章节号无效或章节文件不存在 | 设置当前章节为 `1` 并准备 `chapter_1.txt` |
 | 草稿/定稿/审校/批量任务一直是 `queued` | 这些阶段尚未接入真实执行器 | 这是当前预期行为，不代表设定/目录生成能力失败 |
-| 知识导入后没有真实检索效果 | 新前端导入只是复制到 `vectorstore/imported/` | 真实向量化仍依赖旧 GUI 知识库流程或后续执行器接入 |
+| 知识导入失败或没有真实检索效果 | Embedding 配置缺失、模型不可用、旧向量库未清理或生成上下文未命中资料 | 检查设置页 Embedding 配置，必要时清理 `vectorstore/` 后重新导入 |
 | WebDAV 测试失败 | URL、账号、密码或远程服务不可用 | 无 API Key 冒烟阶段不要求测试成功 |
 | WebDAV 恢复后配置变化 | 恢复会覆盖本地 `config.json` | 仅在确认远程配置正确且本地已备份后执行 |
 

@@ -156,10 +156,10 @@ def save_chapter(chapter_number: int, request: ChapterSaveRequest):
 
 ## 向量库和知识库
 
-- 向量库默认在当前输出目录的 `vectorstore/`。
+- 向量库默认在当前输出目录的 `vectorstore/`，Chroma collection name 仍为 `novel_collection`。
 - 切换 Embedding 模型后建议清空 `vectorstore/`，避免旧向量污染检索。
-- 知识导入接口当前把本地文件复制到 `vectorstore/imported/`。
-- 清理向量库会删除整个 `vectorstore/`，因此 UI 和 API 文案必须明确这是破坏性操作。
+- 知识导入接口会把本地文件分块写入 `vectorstore/`，并在成功后复制源文件到 `vectorstore/imported/` 作为前端列表记录。
+- 清理向量库会删除整个 `vectorstore/`，包括 `imported/` 副本，因此 UI 和 API 文案必须明确这是破坏性操作。
 
 参考文件：
 
@@ -167,6 +167,108 @@ def save_chapter(chapter_number: int, request: ChapterSaveRequest):
 - `novel_generator/knowledge.py`
 - `app/api/server.py`
 - `tests/test_api_knowledge_tools.py`
+
+## Scenario: 知识库真实向量化导入
+
+### 1. Scope / Trigger
+
+- Trigger: 前端知识库页调用本地 API 导入资料，资料必须进入旧生成链路读取的 Chroma 向量库，而不是只复制文件。
+- Scope: `POST /api/knowledge/import`、`GET /api/knowledge`、`config.json.embedding_configs`、输出目录 `vectorstore/`、`novel_generator.knowledge.import_knowledge_file(...)`。
+
+### 2. Signatures
+
+- API: `POST /api/knowledge/import`
+- Request model: `KnowledgeImportRequest`
+  - `filePath: str`，本机知识文件路径。
+- Response model: `OperationResult`
+  - `success: bool`
+  - `message: str`
+- Legacy importer:
+
+```python
+def import_knowledge_file(
+    embedding_api_key: str,
+    embedding_url: str,
+    embedding_interface_format: str,
+    embedding_model_name: str,
+    file_path: str,
+    filepath: str,
+) -> KnowledgeImportResult:
+    ...
+```
+
+### 3. Contracts
+
+- API 必须从当前 `config.json` 读取选中的 Embedding 配置：
+  - 选中名称来自 `last_embedding_interface_format`；缺失时可回退到 `embedding_configs` 第一项。
+  - 配置项来自 `embedding_configs[选中名称]`。
+  - 必须有接口格式和模型名。
+  - 远程接口必须有 API Key；本地 `Ollama`、`ML Studio` / `LM Studio` 可以没有 API Key。
+- API 调用 `novel_generator.knowledge.import_knowledge_file(...)` 写入 Chroma。导入失败时不得复制源文件到 `vectorstore/imported/`，也不得返回成功。
+- 导入成功后复制源文件到当前输出目录 `vectorstore/imported/<文件名>`，仅用于前端展示和追踪导入源文件。
+- `GET /api/knowledge` 对 `vectorstore/imported/` 文件返回 `tags=["导入文件", "已向量化"]`，前提是 `vectorstore/` 中存在非 `imported/` 的 Chroma 数据文件。
+- 章节草稿生成继续通过 `novel_generator.chapter.py` 加载同一 `vectorstore/`，不新增单独检索 API。
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected |
+| --- | --- |
+| `filePath` 不存在或不是文件 | HTTP `400`，`detail="知识文件不存在"` |
+| `embedding_configs` 缺失或选中项不存在 | HTTP `400`，`detail="请先配置 Embedding 模型"` |
+| 选中 Embedding 配置缺接口格式 | HTTP `400`，`detail="Embedding 配置缺少接口格式"` |
+| 选中 Embedding 配置缺模型名 | HTTP `400`，`detail="Embedding 配置缺少模型名称"` |
+| 远程 Embedding 配置缺 API Key | HTTP `400`，`detail="Embedding 配置缺少 API Key"` |
+| legacy importer 返回失败 | HTTP `400`，`detail` 使用 importer 的中文失败原因 |
+| 导入成功 | HTTP `200`，复制导入副本，响应说明已写入向量库和片段数 |
+
+### 5. Good/Base/Bad Cases
+
+- Good: 有效 Ollama Embedding 配置、源文件存在，导入后 `vectorstore/` 出现 Chroma 数据，`vectorstore/imported/<文件名>` 存在，知识列表展示“已向量化”。
+- Base: OpenAI Embedding 配置未填写 API Key，接口直接返回中文 400，不调用外部服务。
+- Base: `ML Studio` / `LM Studio` 本地接口允许空 API Key，由 adapter 向本地服务发请求。
+- Bad: API 先复制文件再尝试向量化；一旦向量化失败，前端会误以为知识已可用于生成。
+- Bad: 页面或 API 把 `vectorstore/imported/` 当成向量库本体；它只是导入源文件副本。
+
+### 6. Tests Required
+
+- API 测试使用临时 `config.json` 和输出目录，不读写真实配置或真实向量库。
+- 通过 monkeypatch fake legacy importer 覆盖：
+  - 成功路径的调用参数、导入副本、响应文案和 `已向量化` 标签。
+  - 缺 Embedding 配置、缺模型名、远程缺 API Key 的中文 400。
+  - legacy importer 失败时不复制导入副本。
+- 使用 fake embedding adapter 验证 legacy importer 写入的 Chroma `vectorstore/` 可被 `load_vector_store(...).similarity_search(...)` 检索到。
+- 前端改动必须通过 `cd frontend && npm run typecheck` 和 `cd frontend && npm run build`。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+@app.post("/api/knowledge/import")
+def import_knowledge_file(request: KnowledgeImportRequest):
+    shutil.copy2(source_path, output_path / "vectorstore" / "imported" / source_path.name)
+    return OperationResult(success=True, message=f"已导入 {source_path.name}")
+```
+
+问题：这只创建了导入副本，没有写入 Chroma。后续章节草稿生成仍检索不到资料。
+
+#### Correct
+
+```python
+result = import_knowledge_to_vectorstore(
+    embedding_api_key=config.apiKey,
+    embedding_url=config.baseUrl,
+    embedding_interface_format=config.interfaceFormat,
+    embedding_model_name=config.modelName,
+    file_path=str(source_path),
+    filepath=str(output_path),
+)
+if not result.success:
+    raise HTTPException(status_code=400, detail=result.message)
+shutil.copy2(source_path, import_dir / source_path.name)
+```
+
+正确做法：先用当前 Embedding 配置写入旧生成链路使用的 Chroma `vectorstore/`，成功后再复制源文件副本。
 
 ## WebDAV
 
