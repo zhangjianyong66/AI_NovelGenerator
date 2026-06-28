@@ -11,7 +11,7 @@
 - 使用本地 Ollama Embedding 时，需要先启动 Ollama 并拉取模型，例如 `ollama serve` 和 `ollama pull nomic-embed-text`。
 - 切换不同 Embedding 模型后，建议清空 `vectorstore/`，避免旧向量库影响检索。
 - 项目功能地图与前端验收剧本放在 `docs/feature-map-and-acceptance.md`；不熟悉原项目或验收新前端时先阅读该文档，确认旧 GUI、新前端和本地 API 的职责边界。
-- 新前端要从“可编辑工作台”变成“可真实创作工具”时，优先级记录在 `docs/feature-map-and-acceptance.md` 的“新前端真实可用开发顺序”：真实生成执行器最小闭环、章节草稿/定稿闭环、任务持久化与可恢复工作流、知识库真实向量化、项目管理、章节生命周期最小闭环、一致性审校真实执行、批量定稿真实执行和项目参数隔离第一版已完成；后续不要优先扩大纯视觉 UI 重构，应继续补齐后台任务、重试恢复、每项目模型覆盖等真实能力。
+- 新前端要从“可编辑工作台”变成“可真实创作工具”时，优先级记录在 `docs/feature-map-and-acceptance.md` 的“新前端真实可用开发顺序”和“后续任务路线”：真实生成执行器最小闭环、章节草稿/定稿闭环、任务持久化与可恢复工作流、知识库真实向量化、项目管理、章节生命周期最小闭环、一致性审校真实执行、批量定稿真实执行和项目参数隔离第一版已完成；后续不要优先扩大纯视觉 UI 重构，应按顺序补齐生成任务后台执行、失败任务重试与批量失败重跑、任务中断恢复边界、每项目模型配置覆盖、章节生命周期状态补强。
 - UI 字体与控件缩放集中定义在 `ui/styles.py`；新增或调整 CustomTkinter 界面时优先使用 `UI_FONT`、`EDITOR_FONT`、`SMALL_FONT`、`BOLD_FONT`、`TITLE_FONT` 和 `WIDGET_SCALING`，避免重新散落硬编码字体元组。该模块会按系统选择中文字体，Linux/Ubuntu 优先使用 `Noto Sans CJK SC` 等中文字体，Windows 优先使用 `Microsoft YaHei`。
 - `frontend/` 是与现有 Python GUI 并行演进的 Tauri 2 + Vue 3 + TypeScript + Vite 前端工程；不会替代 `python main.py`。
 - 前端依赖通过 `cd frontend && npm install` 安装；常用命令包括 `npm run dev`、`npm run typecheck`、`npm run build` 和 `npm run tauri:dev`。
