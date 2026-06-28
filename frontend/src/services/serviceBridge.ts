@@ -95,7 +95,18 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     })
     if (!response.ok) {
-      throw normalizeError(new Error(response.statusText), '本地后端请求失败', response.status)
+      let message = '本地后端请求失败'
+      try {
+        const payload = (await response.json()) as { detail?: unknown; message?: unknown }
+        if (typeof payload.detail === 'string' && payload.detail.trim()) {
+          message = payload.detail
+        } else if (typeof payload.message === 'string' && payload.message.trim()) {
+          message = payload.message
+        }
+      } catch {
+        // Keep the generic message when the backend did not return JSON.
+      }
+      throw normalizeError(new Error(response.statusText), message, response.status)
     }
 
     status.mode = 'backend'

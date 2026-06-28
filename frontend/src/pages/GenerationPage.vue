@@ -6,12 +6,14 @@
     <StatusMessage type="warning" message="当前接口只创建排队任务，尚未接入真实 LLM 执行器，不会直接生成或修改小说文件。" />
     <StatusMessage v-if="!canWriteToBackend" type="warning" :message="writeUnavailableMessage" />
     <StatusMessage type="error" :message="errorMessage" />
+    <StatusMessage :type="chapterTargetStatus" :message="chapterTargetMessage" />
 
     <FormSection title="创建任务" description="后端会按当前项目配置创建任务；草稿、定稿和审校会使用当前章节号。">
       <GenerationActions :disabled="isLoading || !canWriteToBackend" @create="createJob" @create-batch="createBatchJob" />
     </FormSection>
 
     <FormSection title="批量参数" description="批量生成会使用下列章节范围、目标字数、最低字数和自动扩写设置。">
+      <StatusMessage :type="batchValidationStatus" :message="batchValidationMessage" />
       <div class="batch-grid">
         <TextField
           :model-value="batchForm.startChapter"
@@ -69,16 +71,21 @@ import TextField from '@/components/ui/TextField.vue'
 import ToggleField from '@/components/ui/ToggleField.vue'
 import { GenerationActions, GenerationJobDetail, GenerationJobList } from '@/features/generation'
 import { serviceBridge, type ServiceBridgeStatus } from '@/services/serviceBridge'
-import type { GenerationStage } from '@/services/types'
+import type { Chapter, GenerationStage, ProjectConfig } from '@/services/types'
 import { useGenerationStore } from '@/stores/generation'
 import { useProjectsStore } from '@/stores/projects'
 
+type StatusMessageType = 'success' | 'error' | 'warning' | 'loading' | 'empty' | 'info'
+
+const chapterStages = new Set<GenerationStage>(['draft', 'finalization', 'consistency'])
 const projectsStore = useProjectsStore()
 const generationStore = useGenerationStore()
 const { jobs, isLoading } = storeToRefs(generationStore)
 const errorMessage = ref('')
 const selectedJobId = ref('')
 const bridgeStatus = ref<ServiceBridgeStatus>({ ...serviceBridge.getStatus() })
+const projectConfig = ref<ProjectConfig | null>(null)
+const chapters = ref<Chapter[]>([])
 const batchForm = ref({
   startChapter: 1,
   endChapter: 1,
@@ -93,15 +100,101 @@ const syncBridgeStatus = () => {
   bridgeStatus.value = { ...serviceBridge.getStatus() }
 }
 
+const loadGenerationContext = async () => {
+  try {
+    const [nextConfig, nextChapters] = await Promise.all([
+      serviceBridge.getProjectConfig(),
+      serviceBridge.listChapters(projectsStore.activeProjectId),
+    ])
+    projectConfig.value = nextConfig
+    chapters.value = nextChapters
+  } catch (error) {
+    errorMessage.value = normalizeGenerationError(error, '同步生成任务上下文失败')
+  } finally {
+    syncBridgeStatus()
+  }
+}
+
 onMounted(async () => {
   await projectsStore.loadProjects()
   syncBridgeStatus()
+  await loadGenerationContext()
   await generationStore.loadJobs(projectsStore.activeProjectId)
   syncBridgeStatus()
   selectedJobId.value = jobs.value[0]?.id ?? ''
 })
 
 const selectedJob = computed(() => jobs.value.find((job) => job.id === selectedJobId.value) ?? jobs.value[0])
+const availableChapterNumbers = computed(() => new Set(chapters.value.map((chapter) => chapter.order)))
+const currentChapterNumber = computed(() => Number(projectConfig.value?.novelParams.chapterNum || 0))
+const isCurrentChapterValid = computed(() => Number.isInteger(currentChapterNumber.value) && currentChapterNumber.value > 0)
+const hasCurrentChapterFile = computed(() => availableChapterNumbers.value.has(currentChapterNumber.value))
+const chapterTargetStatus = computed<StatusMessageType>(() => {
+  if (!canWriteToBackend.value) return 'warning'
+  if (!isCurrentChapterValid.value || !hasCurrentChapterFile.value) return 'warning'
+  return 'info'
+})
+const chapterTargetMessage = computed(() => {
+  if (!canWriteToBackend.value) return ''
+  if (!isCurrentChapterValid.value) {
+    return '章节类任务需要当前章节号，请先在设置页填写大于 0 的当前章节。'
+  }
+  if (!hasCurrentChapterFile.value) {
+    return `章节类任务将使用第 ${currentChapterNumber.value} 章，但当前输出目录没有 chapter_${currentChapterNumber.value}.txt。`
+  }
+  return `章节类任务将使用第 ${currentChapterNumber.value} 章：chapter_${currentChapterNumber.value}.txt。`
+})
+const missingBatchChapters = computed(() => {
+  const missing: number[] = []
+  const startChapter = Number(batchForm.value.startChapter)
+  const endChapter = Number(batchForm.value.endChapter)
+  if (!Number.isInteger(startChapter) || !Number.isInteger(endChapter) || startChapter <= 0 || endChapter < startChapter) {
+    return missing
+  }
+  for (let chapterNumber = startChapter; chapterNumber <= endChapter; chapterNumber += 1) {
+    if (!availableChapterNumbers.value.has(chapterNumber)) missing.push(chapterNumber)
+  }
+  return missing
+})
+const batchValidationMessage = computed(() => validateBatchForm() ?? `批量任务将检查第 ${batchForm.value.startChapter}-${batchForm.value.endChapter} 章。`)
+const batchValidationStatus = computed<StatusMessageType>(() => (validateBatchForm() ? 'warning' : 'info'))
+
+const normalizeGenerationError = (error: unknown, fallbackMessage: string) => {
+  if (typeof error === 'object' && error !== null) {
+    if ('message' in error && typeof error.message === 'string' && error.message.trim()) {
+      return error.message
+    }
+    if ('detail' in error && typeof error.detail === 'string' && error.detail.trim()) {
+      return error.detail
+    }
+  }
+  if (error instanceof Error && error.message) return error.message
+  return fallbackMessage
+}
+
+const validateChapterStage = () => {
+  if (!isCurrentChapterValid.value) {
+    return '当前章节号为空或不是正整数，请先在设置页填写当前章节。'
+  }
+  if (!hasCurrentChapterFile.value) {
+    return `当前输出目录没有 chapter_${currentChapterNumber.value}.txt，请先准备章节文件。`
+  }
+  return ''
+}
+
+const validateBatchForm = () => {
+  const startChapter = Number(batchForm.value.startChapter)
+  const endChapter = Number(batchForm.value.endChapter)
+  const targetWords = Number(batchForm.value.targetWords)
+  const minimumWords = Number(batchForm.value.minimumWords)
+  if (!Number.isInteger(startChapter) || startChapter <= 0) return '起始章节必须是大于 0 的整数。'
+  if (!Number.isInteger(endChapter) || endChapter < startChapter) return '结束章节不能小于起始章节。'
+  if (targetWords < 0 || minimumWords < 0) return '目标字数和最低字数不能为负数。'
+  if (missingBatchChapters.value.length > 0) {
+    return `当前输出目录缺少章节文件：${missingBatchChapters.value.map((chapterNumber) => `chapter_${chapterNumber}.txt`).join('、')}。`
+  }
+  return ''
+}
 
 const createJob = async (stage: GenerationStage) => {
   errorMessage.value = ''
@@ -109,25 +202,24 @@ const createJob = async (stage: GenerationStage) => {
     errorMessage.value = writeUnavailableMessage.value
     return
   }
+  if (chapterStages.has(stage)) {
+    const validationMessage = validateChapterStage()
+    if (validationMessage) {
+      errorMessage.value = validationMessage
+      return
+    }
+  }
   try {
-    const projectConfig = await serviceBridge.getProjectConfig()
     await generationStore.createJob({
       projectId: projectsStore.activeProjectId,
       stage,
-      chapterNumber: ['draft', 'finalization', 'consistency'].includes(stage)
-        ? Number(projectConfig.novelParams.chapterNum || 0)
-        : undefined,
+      chapterNumber: chapterStages.has(stage) ? currentChapterNumber.value : undefined,
     })
     syncBridgeStatus()
     selectedJobId.value = jobs.value[0]?.id ?? selectedJobId.value
   } catch (error) {
     syncBridgeStatus()
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : typeof error === 'object' && error !== null && 'message' in error
-          ? String(error.message)
-          : '创建任务失败'
+    errorMessage.value = normalizeGenerationError(error, '创建任务失败')
   }
 }
 
@@ -135,6 +227,11 @@ const createBatchJob = async () => {
   errorMessage.value = ''
   if (!canWriteToBackend.value) {
     errorMessage.value = writeUnavailableMessage.value
+    return
+  }
+  const validationMessage = validateBatchForm()
+  if (validationMessage) {
+    errorMessage.value = validationMessage
     return
   }
   try {
@@ -147,12 +244,7 @@ const createBatchJob = async () => {
     selectedJobId.value = jobs.value[0]?.id ?? selectedJobId.value
   } catch (error) {
     syncBridgeStatus()
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : typeof error === 'object' && error !== null && 'message' in error
-          ? String(error.message)
-          : '创建批量任务失败'
+    errorMessage.value = normalizeGenerationError(error, '创建批量任务失败')
   }
 }
 

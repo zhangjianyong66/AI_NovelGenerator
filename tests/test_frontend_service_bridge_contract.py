@@ -26,3 +26,18 @@ def test_app_layout_displays_service_bridge_status():
     assert "serviceBridge.checkHealth" in app_layout
     assert "bridgeStatus.mode" in app_layout
     assert "Mock UI" not in app_layout
+
+
+def test_generation_page_surfaces_real_backend_boundaries():
+    generation_page = (FRONTEND_SRC / "pages" / "GenerationPage.vue").read_text(encoding="utf-8")
+    job_detail = (
+        FRONTEND_SRC / "features" / "generation" / "components" / "GenerationJobDetail.vue"
+    ).read_text(encoding="utf-8")
+
+    assert "chapterTargetMessage" in generation_page
+    assert "batchValidationMessage" in generation_page
+    assert "missingBatchChapters" in generation_page
+    assert "normalizeGenerationError" in generation_page
+    assert "任务已记录在本地后端内存队列" in job_detail
+    assert "项目：" in job_detail
+    assert "开始：" in job_detail

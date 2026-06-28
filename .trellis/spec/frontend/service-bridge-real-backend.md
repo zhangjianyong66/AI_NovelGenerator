@@ -33,6 +33,7 @@ export interface ServiceBridgeStatus {
 - 页面和 store 不直接调用 `mockApi`；所有真实/Mock 数据访问统一通过 `serviceBridge`。
 - 写类方法不得提供 mock 写入 fallback，包括但不限于项目配置保存、模型设置保存、核心项目文件保存、章节保存、知识导入、清理向量库、角色保存/导入、生成任务创建、WebDAV 操作。
 - 读类 fallback 只能用于展示预览数据，不能让用户误以为正在查看当前真实输出目录。
+- 后端返回非 2xx JSON 错误时，`serviceBridge` 应优先把响应体中的 `detail` 或 `message` 作为 `ServiceBridgeError.message` 暴露给页面；页面不应把“章节文件不存在：2”这类可操作错误泛化成“本地后端请求失败”。
 
 ### 4. Validation & Error Matrix
 
@@ -43,6 +44,7 @@ export interface ServiceBridgeStatus {
 | 写类操作在 `mock` 或 `disconnected` 模式触发 | 提前显示 `getWriteUnavailableMessage()`，不发起 mock 写入 |
 | 章节保存返回 404 | 显示“章节文件不存在”，不自动创建 `chapter_X.txt` |
 | 生成任务创建成功 | 状态为 `queued`，日志说明等待执行器接入，不提示真实生成完成 |
+| 生成任务创建返回 400 `{"detail": "章节文件不存在：2"}` | 页面展示“章节文件不存在：2”或带行动建议的等价文案 |
 
 ### 5. Good/Base/Bad Cases
 
@@ -54,6 +56,7 @@ export interface ServiceBridgeStatus {
 
 - `cd frontend && npm run typecheck`
 - `cd frontend && npm run build`
+- 前端源码/合约测试应覆盖生成任务页的真实后端边界：目标章节提示、批量缺章提示、后端错误 `detail` 透传、`queued` 详情解释。
 - 真实后端冒烟：
   - 保存项目输出目录。
   - 工作台保存核心项目文件并检查真实文件落盘。
@@ -93,4 +96,3 @@ const writeUnavailableMessage = computed(() =>
 - 章节编辑页：只编辑已存在的 `chapter_X.txt`，文件不存在时提示用户先准备章节文件。
 - 生成任务页：只创建后端 queued 任务；在真实执行器接入前，不承诺生成或修改小说文件。
 - 知识库页：读类信息可离线预览；导入、清理、保存角色、写入章节参数必须要求真实后端。
-
