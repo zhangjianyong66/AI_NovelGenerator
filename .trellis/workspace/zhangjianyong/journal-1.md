@@ -491,3 +491,38 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: 前端项目管理真实可用闭环
+
+**Date**: 2026-06-28
+**Task**: 前端项目管理真实可用闭环
+**Branch**: `main`
+
+### Summary
+
+接入项目创建、打开和切换 API 与前端项目页；最近项目索引写入本地状态库；同步更新功能地图、AGENTS 和 Trellis 规范。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a275e3e` | (see git log) |
+| `55964a1` | (see git log) |
+| `5dd78b2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
