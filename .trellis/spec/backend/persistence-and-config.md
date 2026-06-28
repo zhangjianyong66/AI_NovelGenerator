@@ -1,6 +1,6 @@
 # Persistence And Config
 
-当前项目没有 ORM。持久化由根目录 `config.json`、用户输出目录中的文本文件、角色库目录、WebDAV 远程配置备份、Chroma `vectorstore/` 和前端生成任务 SQLite 状态库组成。SQLite 当前只保存生成任务历史，不承载小说正文、项目配置、角色库或向量数据。
+当前项目没有 ORM。持久化由根目录 `config.json`、用户输出目录中的文本文件、角色库目录、WebDAV 远程配置备份、Chroma `vectorstore/` 和前端 SQLite 状态库组成。SQLite 当前保存生成任务历史和最近项目索引，不承载小说正文、完整项目配置、角色库或向量数据。
 
 ## 本地配置
 
@@ -10,13 +10,14 @@
 - FastAPI 本地 API 读取配置时，如果 `other_params.filepath` 缺失或为空，会自动使用配置文件同级的 `output/`，创建目录并写回配置；根目录 `output/` 不提交。
 - 保存 JSON 时使用 UTF-8、`ensure_ascii=False`、缩进格式，并优先保持原子写入模式：先写临时文件，再 `os.replace()`。
 
-## 生成任务状态库
+## 本地状态库
 
-- 生成任务状态库默认位于项目根目录 `.local/state.sqlite3`，`.local/` 已被 `.gitignore` 忽略。
-- 该库由 `app/services/generation_job_store.py` 使用标准库 `sqlite3` 管理，当前只包含 `generation_jobs` 表。
+- 本地状态库默认位于项目根目录 `.local/state.sqlite3`，`.local/` 已被 `.gitignore` 忽略。
+- 该库由 `app/services/generation_job_store.py` 和 `app/services/project_store.py` 使用标准库 `sqlite3` 管理，当前包含 `generation_jobs` 和 `recent_projects` 表。
 - `generation_jobs` 保存任务 ID、项目 ID、阶段、标题、状态、进度、开始时间、日志、错误和创建请求参数，供前端刷新或后端重启后恢复任务历史。
-- API 测试应通过 `create_app(state_db_file=tmp_path / "state.sqlite3")` 隔离任务状态库，不读写真正的 `.local/state.sqlite3`。
-- 删除 `.local/state.sqlite3` 只会清空生成任务历史，不会删除 `config.json` 或小说输出文件。
+- `recent_projects` 保存最近项目 ID、输出路径、标题、类型和最近打开时间，供前端项目页展示和切换；当前项目权威来源仍是 `config.json.other_params.filepath`。
+- API 测试应通过 `create_app(state_db_file=tmp_path / "state.sqlite3")` 隔离状态库，不读写真正的 `.local/state.sqlite3`。
+- 删除 `.local/state.sqlite3` 只会清空生成任务历史和最近项目列表，不会删除 `config.json` 或小说输出文件。
 
 参考文件：
 
@@ -75,7 +76,9 @@ API 当前固定支持的核心项目文件映射在 `app/api/server.py` 的 `CO
 
 当前本地 API 暴露给前端的项目/知识库列表是文件系统视图：
 
-- `GET /api/projects` 返回当前配置对应的单项目摘要，章节完成数来自输出目录下的 `chapter_<数字>.txt`。
+- `GET /api/projects` 返回最近项目列表，当前 `config.json.other_params.filepath` 对应项目置顶并标记 `active`；章节完成数来自输出目录下的 `chapter_<数字>.txt`。
+- `POST /api/projects` 创建指定输出目录，写入当前 `config.json.other_params.filepath/topic/genre/num_chapters/word_number`，并 upsert 最近项目索引。
+- `POST /api/projects/switch` 通过最近项目 ID 或已有输出路径切换当前 `config.json.other_params.filepath`，不会删除或覆盖目标目录小说文件。
 - `GET /api/knowledge` 汇总 `vectorstore/imported/` 下的导入文件和 `角色库/<分类>/<角色名>.txt` 角色文件。
 
 ## Scenario: 文件系统章节生命周期

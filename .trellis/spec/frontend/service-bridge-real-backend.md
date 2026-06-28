@@ -95,7 +95,7 @@ const writeUnavailableMessage = computed(() =>
 
 ## Page Responsibility Contract
 
-- 项目页：展示当前项目、输出路径和小说参数；本地 API 没有创建项目接口时，不展示“新建项目”主操作。
+- 项目页：展示当前项目、输出路径和小说参数；通过 `serviceBridge.createProject(...)` 和 `serviceBridge.switchProject(...)` 调用真实后端创建、打开和切换本地项目；离线预览或断线时这些写操作必须禁用或提前提示。
 - 工作台：只负责核心项目文件编辑闭环；章节导航只作为上下文和跳转线索，不承担章节正文保存。
 - 章节编辑页：展示已有章节和计划章节；计划章节来自后端 `status="planned"`，编辑器保持只读，用户必须先通过 `serviceBridge.createChapter(chapterOrder)` 创建缺失的 `chapter_X.txt`，之后才能编辑并通过 `saveChapter` 保存。
 - 生成任务页：通过后端创建任务。已接入阶段包括设定、目录、草稿和定稿，会同步真实执行并返回 `done` / `failed`；未接入阶段包括审校和批量，只创建 queued 任务，不承诺生成或修改小说文件。
