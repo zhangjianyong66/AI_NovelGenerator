@@ -15,11 +15,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from app.services.generation_executor import GenerationStage as ExecutableGenerationStage, run_generation_job
+from app.services.generation_job_store import GenerationJobStore
 from chapter_directory_parser import get_chapter_info_from_blueprint
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_FILE = PROJECT_ROOT / "config.json"
+DEFAULT_STATE_DB_FILE = PROJECT_ROOT / ".local" / "state.sqlite3"
 REQUEST_TIMEOUT = (5, 30)
 LOCAL_FRONTEND_ORIGIN_REGEX = r"^http://(127\.0\.0\.1|localhost):\d+$"
 
@@ -632,7 +634,20 @@ def _backup_local_config(config_path: Path) -> Path | None:
     return backup_path
 
 
-def create_app(config_file: str | Path | None = None) -> FastAPI:
+def _default_state_db_file(config_path: Path) -> Path:
+    if config_path == DEFAULT_CONFIG_FILE:
+        return DEFAULT_STATE_DB_FILE
+    return config_path.parent / ".local" / "state.sqlite3"
+
+
+def _model_to_dict(model: BaseModel) -> dict[str, Any]:
+    return model.model_dump()
+
+
+def create_app(
+    config_file: str | Path | None = None,
+    state_db_file: str | Path | None = None,
+) -> FastAPI:
     app = FastAPI(title="AI Novel Generator Local API")
     app.add_middleware(
         CORSMiddleware,
@@ -641,7 +656,9 @@ def create_app(config_file: str | Path | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     config_path = Path(config_file) if config_file is not None else DEFAULT_CONFIG_FILE
-    generation_jobs: dict[str, GenerationJob] = {}
+    job_store = GenerationJobStore(
+        Path(state_db_file) if state_db_file is not None else _default_state_db_file(config_path)
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -835,11 +852,14 @@ def create_app(config_file: str | Path | None = None) -> FastAPI:
                 *extra_log,
             ],
         )
+        request_payload = _model_to_dict(request)
+        job_store.save_job(_model_to_dict(job), request_payload)
 
         if request.stage in EXECUTABLE_GENERATION_STAGES:
             job.status = "running"
             job.progress = 5
             job.log.append("任务已开始执行真实生成器")
+            job_store.save_job(_model_to_dict(job), request_payload)
             result = run_generation_job(
                 config,
                 cast(ExecutableGenerationStage, request.stage),
@@ -856,18 +876,19 @@ def create_app(config_file: str | Path | None = None) -> FastAPI:
         else:
             job.log.append("任务已创建，等待执行器接入")
 
-        generation_jobs[job.id] = job
+        job_store.save_job(_model_to_dict(job), request_payload)
         return job
 
     @app.get("/api/projects/{project_id}/jobs", response_model=list[GenerationJob])
     def list_generation_jobs(project_id: str) -> list[GenerationJob]:
-        return [job for job in generation_jobs.values() if job.projectId == project_id]
+        return [GenerationJob(**job) for job in job_store.list_jobs(project_id)]
 
     @app.get("/api/generation-jobs/{job_id}", response_model=GenerationJob)
     def get_generation_job(job_id: str) -> GenerationJob:
-        if job_id not in generation_jobs:
+        job = job_store.get_job(job_id)
+        if job is None:
             raise HTTPException(status_code=404, detail="任务不存在")
-        return generation_jobs[job_id]
+        return GenerationJob(**job)
 
     @app.get("/api/knowledge", response_model=list[KnowledgeItem])
     def list_knowledge() -> list[KnowledgeItem]:

@@ -124,6 +124,93 @@ def test_generation_job_endpoint_creates_lists_and_reads_job(tmp_path):
     assert read_response.json()["id"] == job["id"]
 
 
+def test_generation_job_endpoint_persists_queued_job_across_app_restart(tmp_path):
+    output_path = tmp_path / "novel"
+    output_path.mkdir()
+    (output_path / "chapter_2.txt").write_text("章节正文", encoding="utf-8")
+    config_file = tmp_path / "config.json"
+    state_db_file = tmp_path / "state.sqlite3"
+    write_config(config_file, output_path)
+    client = TestClient(create_app(config_file=str(config_file), state_db_file=str(state_db_file)))
+
+    response = client.post(
+        "/api/generation-jobs",
+        json={"projectId": "current", "stage": "consistency", "chapterNumber": 2},
+    )
+
+    assert response.status_code == 200
+    job = response.json()
+
+    restarted_client = TestClient(create_app(config_file=str(config_file), state_db_file=str(state_db_file)))
+    list_response = restarted_client.get("/api/projects/current/jobs")
+    read_response = restarted_client.get(f"/api/generation-jobs/{job['id']}")
+
+    assert list_response.status_code == 200
+    assert [item["id"] for item in list_response.json()] == [job["id"]]
+    assert read_response.status_code == 200
+    assert read_response.json()["status"] == "queued"
+    assert read_response.json()["log"] == job["log"]
+
+
+def test_generation_job_endpoint_persists_done_job_across_app_restart(tmp_path, monkeypatch):
+    output_path = tmp_path / "novel"
+    output_path.mkdir()
+    config_file = tmp_path / "config.json"
+    state_db_file = tmp_path / "state.sqlite3"
+    write_generation_config(config_file, output_path)
+    monkeypatch.setattr(
+        "app.services.generation_executor.Novel_architecture_generate",
+        fake_architecture_generate,
+    )
+    client = TestClient(create_app(config_file=str(config_file), state_db_file=str(state_db_file)))
+
+    response = client.post(
+        "/api/generation-jobs",
+        json={"projectId": "current", "stage": "architecture"},
+    )
+
+    assert response.status_code == 200
+    job = response.json()
+    assert job["status"] == "done"
+
+    restarted_client = TestClient(create_app(config_file=str(config_file), state_db_file=str(state_db_file)))
+    read_response = restarted_client.get(f"/api/generation-jobs/{job['id']}")
+
+    assert read_response.status_code == 200
+    persisted_job = read_response.json()
+    assert persisted_job["status"] == "done"
+    assert persisted_job["progress"] == 100
+    assert persisted_job["error"] is None
+    assert "真实生成执行完成" in persisted_job["log"]
+
+
+def test_generation_job_endpoint_persists_failed_job_across_app_restart(tmp_path):
+    output_path = tmp_path / "novel"
+    output_path.mkdir()
+    config_file = tmp_path / "config.json"
+    state_db_file = tmp_path / "state.sqlite3"
+    write_generation_config(config_file, output_path)
+    client = TestClient(create_app(config_file=str(config_file), state_db_file=str(state_db_file)))
+
+    response = client.post(
+        "/api/generation-jobs",
+        json={"projectId": "current", "stage": "draft", "chapterNumber": 1},
+    )
+
+    assert response.status_code == 200
+    job = response.json()
+    assert job["status"] == "failed"
+
+    restarted_client = TestClient(create_app(config_file=str(config_file), state_db_file=str(state_db_file)))
+    read_response = restarted_client.get(f"/api/generation-jobs/{job['id']}")
+
+    assert read_response.status_code == 200
+    persisted_job = read_response.json()
+    assert persisted_job["status"] == "failed"
+    assert "请先生成章节目录" in persisted_job["error"]
+    assert any("执行失败：请先生成章节目录" in line for line in persisted_job["log"])
+
+
 def test_generation_job_endpoint_supports_core_stages(tmp_path, monkeypatch):
     output_path = tmp_path / "novel"
     output_path.mkdir()

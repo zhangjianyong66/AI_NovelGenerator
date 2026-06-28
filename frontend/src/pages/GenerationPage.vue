@@ -4,6 +4,7 @@
 
     <StatusMessage v-if="isLoading" type="loading" message="正在同步生成任务状态。" />
     <StatusMessage type="info" message="设定、目录、草稿和定稿已接入本地真实执行器，需要有效 LLM 配置，完成后会写入项目文件。" />
+    <StatusMessage type="info" message="任务历史保存在本地状态库，后端重启后仍可查看日志、结果和错误。" />
     <StatusMessage type="warning" message="审校和批量阶段仍处于后续接入范围，当前只创建任务记录。" />
     <StatusMessage v-if="!canWriteToBackend" type="warning" :message="writeUnavailableMessage" />
     <StatusMessage type="error" :message="errorMessage" />

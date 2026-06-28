@@ -3,6 +3,7 @@
 /build
 /dist
 /.vscode
+/.local
 /__pycache__
 __pycache__/
 *.pyc
