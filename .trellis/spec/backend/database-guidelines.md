@@ -99,7 +99,7 @@ def _chapter_file_path(output_path: Path, chapter_number: int) -> Path:
 
 ### 5. Good/Base/Bad Cases
 
-- Good: Create a `consistency` queued task, rebuild `TestClient(create_app(..., state_db_file=same_path))`, then list and read the same task.
+- Good: Create a `consistency` task with a fake审校 executor, rebuild `TestClient(create_app(..., state_db_file=same_path))`, then read `status == "done"` and the persisted审校 result log.
 - Good: Create an `architecture` task with fake executor, then rebuild the app and read `status == "done"`, `progress == 100`, and completion log.
 - Base: Create a `draft` task without `Novel_directory.txt`, then rebuild the app and read `status == "failed"` plus Chinese error.
 - Bad: Keeping task state only in a process-local dict; the frontend appears usable until the backend restarts, then history disappears.
@@ -109,7 +109,8 @@ def _chapter_file_path(output_path: Path, chapter_number: int) -> Path:
 
 - API tests must pass both `config_file` and `state_db_file` with temporary paths.
 - Required assertions:
-  - queued jobs survive app/client reconstruction.
+  - queued `batch` jobs survive app/client reconstruction.
+  - done `consistency` jobs survive app/client reconstruction with审校 result log.
   - done jobs survive app/client reconstruction with progress, log, and null error.
   - failed jobs survive app/client reconstruction with Chinese error and log.
   - existing in-request list/detail behavior still works.

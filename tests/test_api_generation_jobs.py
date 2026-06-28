@@ -31,6 +31,7 @@ def write_generation_config(config_file, output_path, api_key="test-key"):
                     "chapter_outline_llm": "Default",
                     "prompt_draft_llm": "Default",
                     "final_chapter_llm": "Default",
+                    "consistency_review_llm": "Default",
                 },
                 "llm_configs": {
                     "Default": {
@@ -93,12 +94,31 @@ def fake_finalize_chapter(**kwargs):
     )
 
 
-def test_generation_job_endpoint_creates_lists_and_reads_job(tmp_path):
+def fake_check_consistency(**kwargs):
+    assert kwargs["novel_setting"] == "测试小说设定"
+    assert kwargs["character_state"] == "角色状态"
+    assert kwargs["global_summary"] == "全局摘要"
+    assert kwargs["plot_arcs"] == "剧情要点"
+    assert kwargs["chapter_text"] == "章节正文"
+    assert kwargs["api_key"] == "test-key"
+    assert kwargs["model_name"] == "test-model"
+    return "无明显冲突"
+
+
+def test_generation_job_endpoint_creates_lists_and_reads_job(tmp_path, monkeypatch):
     output_path = tmp_path / "novel"
     output_path.mkdir()
+    (output_path / "Novel_setting.txt").write_text("测试小说设定", encoding="utf-8")
+    (output_path / "character_state.txt").write_text("角色状态", encoding="utf-8")
+    (output_path / "global_summary.txt").write_text("全局摘要", encoding="utf-8")
+    (output_path / "plot_arcs.txt").write_text("剧情要点", encoding="utf-8")
     (output_path / "chapter_2.txt").write_text("章节正文", encoding="utf-8")
     config_file = tmp_path / "config.json"
-    write_config(config_file, output_path)
+    write_generation_config(config_file, output_path)
+    monkeypatch.setattr(
+        "app.services.generation_executor.check_consistency",
+        fake_check_consistency,
+    )
     client = TestClient(create_app(config_file=str(config_file)))
 
     response = client.post(
@@ -110,10 +130,10 @@ def test_generation_job_endpoint_creates_lists_and_reads_job(tmp_path):
     job = response.json()
     assert job["projectId"] == "current"
     assert job["stage"] == "consistency"
-    assert job["status"] == "queued"
-    assert job["progress"] == 0
+    assert job["status"] == "done"
+    assert job["progress"] == 100
     assert job["error"] is None
-    assert "等待执行器接入" in job["log"][-1]
+    assert "无明显冲突" in job["log"]
 
     list_response = client.get("/api/projects/current/jobs")
     assert list_response.status_code == 200
@@ -124,13 +144,18 @@ def test_generation_job_endpoint_creates_lists_and_reads_job(tmp_path):
     assert read_response.json()["id"] == job["id"]
 
 
-def test_generation_job_endpoint_persists_queued_job_across_app_restart(tmp_path):
+def test_generation_job_endpoint_persists_consistency_result_across_app_restart(tmp_path, monkeypatch):
     output_path = tmp_path / "novel"
     output_path.mkdir()
+    (output_path / "Novel_setting.txt").write_text("测试小说设定", encoding="utf-8")
     (output_path / "chapter_2.txt").write_text("章节正文", encoding="utf-8")
     config_file = tmp_path / "config.json"
     state_db_file = tmp_path / "state.sqlite3"
-    write_config(config_file, output_path)
+    write_generation_config(config_file, output_path)
+    monkeypatch.setattr(
+        "app.services.generation_executor.check_consistency",
+        lambda **kwargs: "审校结果：角色动机一致",
+    )
     client = TestClient(create_app(config_file=str(config_file), state_db_file=str(state_db_file)))
 
     response = client.post(
@@ -148,7 +173,8 @@ def test_generation_job_endpoint_persists_queued_job_across_app_restart(tmp_path
     assert list_response.status_code == 200
     assert [item["id"] for item in list_response.json()] == [job["id"]]
     assert read_response.status_code == 200
-    assert read_response.json()["status"] == "queued"
+    assert read_response.json()["status"] == "done"
+    assert "审校结果：角色动机一致" in read_response.json()["log"]
     assert read_response.json()["log"] == job["log"]
 
 
@@ -231,6 +257,10 @@ def test_generation_job_endpoint_supports_core_stages(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "app.services.generation_executor.finalize_chapter",
         fake_finalize_chapter,
+    )
+    monkeypatch.setattr(
+        "app.services.generation_executor.check_consistency",
+        lambda **kwargs: "无明显冲突",
     )
     client = TestClient(create_app(config_file=str(config_file)))
 
@@ -392,6 +422,61 @@ def test_finalization_generation_job_runs_executor_and_updates_project_files(tmp
     assert (output_path / "character_state.txt").read_text(encoding="utf-8") == "第2章后角色状态"
 
 
+def test_consistency_generation_job_runs_executor_with_architecture_fallback(tmp_path, monkeypatch):
+    output_path = tmp_path / "novel"
+    output_path.mkdir()
+    (output_path / "Novel_architecture.txt").write_text("测试小说设定", encoding="utf-8")
+    (output_path / "chapter_2.txt").write_text("章节正文", encoding="utf-8")
+    config_file = tmp_path / "config.json"
+    write_generation_config(config_file, output_path)
+    monkeypatch.setattr(
+        "app.services.generation_executor.check_consistency",
+        lambda **kwargs: f"审校读取设定：{kwargs['novel_setting']}",
+    )
+    client = TestClient(create_app(config_file=str(config_file)))
+
+    response = client.post(
+        "/api/generation-jobs",
+        json={"projectId": "current", "stage": "consistency", "chapterNumber": 2},
+    )
+
+    assert response.status_code == 200
+    job = response.json()
+    assert job["status"] == "done"
+    assert "审校读取设定：测试小说设定" in job["log"]
+
+
+def test_consistency_generation_job_does_not_modify_project_files(tmp_path, monkeypatch):
+    output_path = tmp_path / "novel"
+    output_path.mkdir()
+    files = {
+        "Novel_setting.txt": "测试小说设定",
+        "chapter_2.txt": "章节正文",
+        "global_summary.txt": "全局摘要",
+        "character_state.txt": "角色状态",
+        "plot_arcs.txt": "剧情要点",
+    }
+    for filename, content in files.items():
+        (output_path / filename).write_text(content, encoding="utf-8")
+    config_file = tmp_path / "config.json"
+    write_generation_config(config_file, output_path)
+    monkeypatch.setattr(
+        "app.services.generation_executor.check_consistency",
+        lambda **kwargs: "无明显冲突",
+    )
+    client = TestClient(create_app(config_file=str(config_file)))
+
+    response = client.post(
+        "/api/generation-jobs",
+        json={"projectId": "current", "stage": "consistency", "chapterNumber": 2},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "done"
+    for filename, content in files.items():
+        assert (output_path / filename).read_text(encoding="utf-8") == content
+
+
 def test_draft_generation_job_fails_when_directory_missing(tmp_path):
     output_path = tmp_path / "novel"
     output_path.mkdir()
@@ -445,6 +530,88 @@ def test_finalization_generation_job_fails_when_chapter_missing(tmp_path):
     job = response.json()
     assert job["status"] == "failed"
     assert "请先生成或保存章节正文" in job["error"]
+
+
+def test_consistency_generation_job_fails_when_setting_missing(tmp_path):
+    output_path = tmp_path / "novel"
+    output_path.mkdir()
+    (output_path / "chapter_2.txt").write_text("章节正文", encoding="utf-8")
+    config_file = tmp_path / "config.json"
+    write_generation_config(config_file, output_path)
+    client = TestClient(create_app(config_file=str(config_file)))
+
+    response = client.post(
+        "/api/generation-jobs",
+        json={"projectId": "current", "stage": "consistency", "chapterNumber": 2},
+    )
+
+    assert response.status_code == 200
+    job = response.json()
+    assert job["status"] == "failed"
+    assert "请先准备小说设定" in job["error"]
+
+
+def test_consistency_generation_job_fails_when_chapter_empty(tmp_path):
+    output_path = tmp_path / "novel"
+    output_path.mkdir()
+    (output_path / "Novel_setting.txt").write_text("测试小说设定", encoding="utf-8")
+    (output_path / "chapter_2.txt").write_text("  ", encoding="utf-8")
+    config_file = tmp_path / "config.json"
+    write_generation_config(config_file, output_path)
+    client = TestClient(create_app(config_file=str(config_file)))
+
+    response = client.post(
+        "/api/generation-jobs",
+        json={"projectId": "current", "stage": "consistency", "chapterNumber": 2},
+    )
+
+    assert response.status_code == 200
+    job = response.json()
+    assert job["status"] == "failed"
+    assert "请先生成或保存章节正文" in job["error"]
+
+
+def test_consistency_generation_job_fails_when_review_llm_not_selected(tmp_path):
+    output_path = tmp_path / "novel"
+    output_path.mkdir()
+    (output_path / "Novel_setting.txt").write_text("测试小说设定", encoding="utf-8")
+    (output_path / "chapter_2.txt").write_text("章节正文", encoding="utf-8")
+    config_file = tmp_path / "config.json"
+    write_generation_config(config_file, output_path)
+    config = json.loads(config_file.read_text(encoding="utf-8"))
+    config["choose_configs"]["consistency_review_llm"] = ""
+    config_file.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+    client = TestClient(create_app(config_file=str(config_file)))
+
+    response = client.post(
+        "/api/generation-jobs",
+        json={"projectId": "current", "stage": "consistency", "chapterNumber": 2},
+    )
+
+    assert response.status_code == 200
+    job = response.json()
+    assert job["status"] == "failed"
+    assert "一致性审校未选择 LLM 配置" in job["error"]
+
+
+def test_consistency_generation_job_fails_when_api_key_missing(tmp_path):
+    output_path = tmp_path / "novel"
+    output_path.mkdir()
+    (output_path / "Novel_setting.txt").write_text("测试小说设定", encoding="utf-8")
+    (output_path / "chapter_2.txt").write_text("章节正文", encoding="utf-8")
+    config_file = tmp_path / "config.json"
+    write_generation_config(config_file, output_path, api_key="")
+    client = TestClient(create_app(config_file=str(config_file)))
+
+    response = client.post(
+        "/api/generation-jobs",
+        json={"projectId": "current", "stage": "consistency", "chapterNumber": 2},
+    )
+
+    assert response.status_code == 200
+    job = response.json()
+    assert job["status"] == "failed"
+    assert "缺少 API Key" in job["error"]
 
 
 def test_generation_job_endpoint_uses_default_output_path_when_missing(tmp_path):

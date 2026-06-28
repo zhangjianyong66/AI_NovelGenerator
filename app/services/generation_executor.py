@@ -8,9 +8,10 @@ from novel_generator.architecture import Novel_architecture_generate
 from novel_generator.blueprint import Chapter_blueprint_generate
 from novel_generator.chapter import generate_chapter_draft
 from novel_generator.finalization import enrich_chapter_text, finalize_chapter
+from consistency_checker import check_consistency
 
 
-GenerationStage = Literal["architecture", "directory", "draft", "finalization"]
+GenerationStage = Literal["architecture", "directory", "draft", "finalization", "consistency"]
 GenerationStatus = Literal["done", "failed"]
 
 ARCHITECTURE_FILENAME = "Novel_architecture.txt"
@@ -58,6 +59,8 @@ def run_generation_job(
                 minimum_words=minimum_words,
                 target_words=target_words,
             )
+        elif stage == "consistency":
+            _run_consistency(config, output_path, log, chapter_number)
         else:
             raise GenerationExecutionError("该生成阶段尚未接入真实执行器")
     except GenerationExecutionError as exc:
@@ -255,6 +258,54 @@ def _run_finalization(
     log.append(f"第 {novel_number} 章定稿完成，已同步章节正文、全局摘要和角色状态")
 
 
+def _run_consistency(
+    config: dict[str, Any],
+    output_path: Path,
+    log: list[str],
+    chapter_number: int | None,
+) -> None:
+    params = _legacy_params(config)
+    llm_config = _stage_llm_config(config, "consistency_review_llm", "一致性审校")
+
+    novel_number = _chapter_number(chapter_number, params)
+    novel_setting = _read_first_non_empty_file(
+        [
+            output_path / FRONTEND_SETTING_FILENAME,
+            output_path / ARCHITECTURE_FILENAME,
+        ],
+        "请先准备小说设定",
+    )
+    chapter_text = _read_required_file(
+        _frontend_chapter_path(output_path, novel_number),
+        "请先生成或保存章节正文",
+    )
+    character_state = _read_optional_file(output_path / "character_state.txt")
+    global_summary = _read_optional_file(output_path / "global_summary.txt")
+    plot_arcs = _read_optional_file(output_path / "plot_arcs.txt")
+
+    log.append(f"正在审校第 {novel_number} 章")
+    log.append("已读取小说设定、角色状态、全局摘要、剧情要点和章节正文")
+    result = check_consistency(
+        novel_setting=novel_setting,
+        character_state=character_state,
+        global_summary=global_summary,
+        chapter_text=chapter_text,
+        api_key=str(llm_config.get("api_key") or ""),
+        base_url=str(llm_config.get("base_url") or ""),
+        model_name=str(llm_config.get("model_name") or ""),
+        temperature=float(llm_config.get("temperature") or 0.3),
+        plot_arcs=plot_arcs,
+        interface_format=str(llm_config.get("interface_format") or ""),
+        max_tokens=int(llm_config.get("max_tokens") or 2048),
+        timeout=int(llm_config.get("timeout") or 600),
+    )
+    result = result.strip()
+    if not result:
+        raise GenerationExecutionError("一致性审校结果为空")
+    log.append("一致性审校结果：")
+    log.append(result)
+
+
 def _legacy_params(config: dict[str, Any]) -> dict[str, Any]:
     params = config.get("other_params") or {}
     if not isinstance(params, dict):
@@ -320,6 +371,26 @@ def _require_non_empty_file(path: Path, message: str) -> Path:
     if not path.exists() or not path.read_text(encoding="utf-8").strip():
         raise GenerationExecutionError(message)
     return path
+
+
+def _read_required_file(path: Path, message: str) -> str:
+    _require_non_empty_file(path, message)
+    return path.read_text(encoding="utf-8").strip()
+
+
+def _read_first_non_empty_file(paths: list[Path], message: str) -> str:
+    for path in paths:
+        if path.exists():
+            content = path.read_text(encoding="utf-8").strip()
+            if content:
+                return content
+    raise GenerationExecutionError(message)
+
+
+def _read_optional_file(path: Path) -> str:
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8").strip()
 
 
 def _chapter_number(chapter_number: int | None, params: dict[str, Any]) -> int:

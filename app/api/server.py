@@ -258,7 +258,7 @@ GENERATION_STAGE_TITLES = {
 }
 
 CHAPTER_GENERATION_STAGES = {"draft", "finalization", "consistency"}
-EXECUTABLE_GENERATION_STAGES = {"architecture", "directory", "draft", "finalization"}
+EXECUTABLE_GENERATION_STAGES = {"architecture", "directory", "draft", "finalization", "consistency"}
 
 
 def _default_config() -> dict[str, Any]:
