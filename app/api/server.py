@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from app.services.generation_executor import GenerationStage as ExecutableGenerationStage, run_generation_job
 from app.services.generation_job_store import GenerationJobStore
+from app.services.project_store import ProjectStore
 from chapter_directory_parser import get_chapter_info_from_blueprint, parse_chapter_blueprint
 from novel_generator.knowledge import KnowledgeImportResult, import_knowledge_file as import_knowledge_to_vectorstore
 
@@ -54,6 +55,19 @@ class ProjectSummary(BaseModel):
     updatedAt: str
     chaptersTotal: int
     chaptersCompleted: int
+
+
+class ProjectCreateRequest(BaseModel):
+    outputPath: str
+    topic: str = ""
+    genre: str = ""
+    numChapters: int = Field(default=0, ge=0)
+    wordNumber: int = Field(default=0, ge=0)
+
+
+class ProjectSwitchRequest(BaseModel):
+    projectId: str | None = None
+    outputPath: str | None = None
 
 
 class LlmConfigItem(BaseModel):
@@ -355,20 +369,91 @@ def _project_summary(config_path: Path) -> ProjectSummary:
     config = _load_config(config_path)
     params = config.get("other_params") or {}
     output_path = _active_output_path(config_path)
-    chapter_numbers = _list_chapter_numbers(output_path)
-    title = str(params.get("topic") or output_path.name or "当前项目")
-    configured_chapters = int(params.get("num_chapters") or 0)
-    chapters_total = configured_chapters or len(chapter_numbers)
-    return ProjectSummary(
-        id="current",
-        title=title,
+    return _project_summary_from_parts(
+        project_id="current",
+        output_path=output_path,
+        title=str(params.get("topic") or ""),
         genre=str(params.get("genre") or ""),
+        chapters_total=int(params.get("num_chapters") or 0),
         status="active",
+        updated_at="",
+    )
+
+
+def _project_summary_from_parts(
+    project_id: str,
+    output_path: Path,
+    title: str = "",
+    genre: str = "",
+    chapters_total: int = 0,
+    status: str = "draft",
+    updated_at: str = "",
+) -> ProjectSummary:
+    chapter_numbers = _list_chapter_numbers(output_path)
+    resolved_title = title or output_path.name or "当前项目"
+    resolved_chapters_total = chapters_total or len(chapter_numbers)
+    return ProjectSummary(
+        id=project_id,
+        title=resolved_title,
+        genre=genre,
+        status=status,
         summary=str(output_path),
-        updatedAt="",
-        chaptersTotal=chapters_total,
+        updatedAt=updated_at,
+        chaptersTotal=resolved_chapters_total,
         chaptersCompleted=len(chapter_numbers),
     )
+
+
+def _normalize_output_path(output_path: str) -> Path:
+    return Path(output_path).expanduser().resolve()
+
+
+def _project_title_for_path(config: dict[str, Any], output_path: Path, fallback_title: str = "") -> str:
+    params = config.get("other_params") or {}
+    return str(fallback_title or params.get("topic") or output_path.name or "当前项目")
+
+
+def _project_genre_from_config(config: dict[str, Any], fallback_genre: str = "") -> str:
+    params = config.get("other_params") or {}
+    return str(fallback_genre or params.get("genre") or "")
+
+
+def _upsert_current_project(project_store: ProjectStore, config_path: Path) -> None:
+    config = _load_config(config_path)
+    output_path = _active_output_path(config_path)
+    project_store.upsert_project(
+        output_path,
+        _project_title_for_path(config, output_path),
+        _project_genre_from_config(config),
+    )
+
+
+def _recent_project_summary(
+    project: dict[str, str],
+    active_output_path: Path,
+    active_config: dict[str, Any],
+) -> ProjectSummary:
+    output_path = Path(project["output_path"])
+    is_active = output_path == active_output_path
+    params = active_config.get("other_params") or {}
+    chapters_total = int(params.get("num_chapters") or 0) if is_active else 0
+    return _project_summary_from_parts(
+        project_id="current" if is_active else project["id"],
+        output_path=output_path,
+        title=project.get("title", ""),
+        genre=project.get("genre", ""),
+        chapters_total=chapters_total,
+        status="active" if is_active else "draft",
+        updated_at="" if is_active else project.get("updated_at", ""),
+    )
+
+
+def _switch_config_output_path(config_path: Path, output_path: Path) -> dict[str, Any]:
+    config = _load_config(config_path)
+    params = config.setdefault("other_params", {})
+    params["filepath"] = str(output_path)
+    _save_config(config_path, config)
+    return config
 
 
 def _project_file_response(file_id: str, output_path: Path) -> ProjectFile:
@@ -716,9 +801,9 @@ def create_app(
         allow_headers=["*"],
     )
     config_path = Path(config_file) if config_file is not None else DEFAULT_CONFIG_FILE
-    job_store = GenerationJobStore(
-        Path(state_db_file) if state_db_file is not None else _default_state_db_file(config_path)
-    )
+    state_path = Path(state_db_file) if state_db_file is not None else _default_state_db_file(config_path)
+    job_store = GenerationJobStore(state_path)
+    project_store = ProjectStore(state_path)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -823,7 +908,64 @@ def create_app(
 
     @app.get("/api/projects", response_model=list[ProjectSummary])
     def list_projects() -> list[ProjectSummary]:
-        return [_project_summary(config_path)]
+        _upsert_current_project(project_store, config_path)
+        config = _load_config(config_path)
+        active_output_path = _active_output_path(config_path)
+        recent_summaries = [
+            _recent_project_summary(project, active_output_path, config)
+            for project in project_store.list_projects()
+        ]
+        recent_summaries.sort(key=lambda project: project.status != "active")
+        return recent_summaries or [_project_summary(config_path)]
+
+    @app.post("/api/projects", response_model=ProjectSummary)
+    def create_project(request: ProjectCreateRequest) -> ProjectSummary:
+        if not request.outputPath.strip():
+            raise HTTPException(status_code=400, detail="项目输出路径不能为空")
+
+        output_path = _normalize_output_path(request.outputPath)
+        output_path.mkdir(parents=True, exist_ok=True)
+        config = _load_config(config_path)
+        params = config.setdefault("other_params", {})
+        params.update(
+            {
+                "filepath": str(output_path),
+                "topic": request.topic,
+                "genre": request.genre,
+                "num_chapters": request.numChapters,
+                "word_number": request.wordNumber,
+            }
+        )
+        _save_config(config_path, config)
+        project_store.upsert_project(
+            output_path,
+            _project_title_for_path(config, output_path, request.topic),
+            _project_genre_from_config(config, request.genre),
+        )
+        return _project_summary(config_path)
+
+    @app.post("/api/projects/switch", response_model=ProjectSummary)
+    def switch_project(request: ProjectSwitchRequest) -> ProjectSummary:
+        if request.projectId:
+            recent_project = project_store.get_project(request.projectId)
+            if recent_project is None:
+                raise HTTPException(status_code=404, detail="项目不存在")
+            output_path = Path(recent_project["output_path"])
+        elif request.outputPath and request.outputPath.strip():
+            output_path = _normalize_output_path(request.outputPath)
+        else:
+            raise HTTPException(status_code=400, detail="项目输出路径不能为空")
+
+        if not output_path.is_dir():
+            raise HTTPException(status_code=400, detail="项目输出路径不存在")
+
+        config = _switch_config_output_path(config_path, output_path)
+        project_store.upsert_project(
+            output_path,
+            _project_title_for_path(config, output_path),
+            _project_genre_from_config(config),
+        )
+        return _project_summary(config_path)
 
     @app.get("/api/project-files", response_model=list[ProjectFile])
     def list_project_files() -> list[ProjectFile]:

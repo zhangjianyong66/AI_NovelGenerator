@@ -10,9 +10,11 @@ import type {
   OperationResult,
   PlotArcs,
   Project,
+  ProjectCreateRequest,
   ProjectConfig,
   ProjectFile,
   ProjectFileId,
+  ProjectSwitchRequest,
   RoleCategory,
   RoleDetail,
   RoleSummary,
@@ -171,6 +173,20 @@ export const serviceBridge = {
       () => requestJson<Project[]>('/api/projects', { allowMockFallback: true }),
       () => mockApi.listProjects(),
     )
+  },
+
+  async createProject(request: ProjectCreateRequest): Promise<Project> {
+    return requestJson<Project>('/api/projects', {
+      method: 'POST',
+      body: request,
+    })
+  },
+
+  async switchProject(request: ProjectSwitchRequest): Promise<Project> {
+    return requestJson<Project>('/api/projects/switch', {
+      method: 'POST',
+      body: request,
+    })
   },
 
   async listChapters(projectId: string): Promise<Chapter[]> {

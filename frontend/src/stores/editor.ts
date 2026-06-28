@@ -62,6 +62,16 @@ export const useEditorStore = defineStore('editor', {
     },
   },
   actions: {
+    resetProjectState() {
+      this.chapters = []
+      this.activeChapterId = ''
+      this.chapterDrafts = {}
+      this.projectFiles = []
+      this.activeProjectFileId = 'novelSetting'
+      this.projectFileDrafts = {} as Record<ProjectFileId, string>
+      this.error = ''
+      this.lastSavedAt = ''
+    },
     async loadChapters(projectId: string) {
       this.isLoading = true
       this.error = ''

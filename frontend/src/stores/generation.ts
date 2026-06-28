@@ -17,6 +17,9 @@ export const useGenerationStore = defineStore('generation', {
     },
   },
   actions: {
+    resetProjectState() {
+      this.jobs = []
+    },
     async loadJobs(projectId: string) {
       this.isLoading = true
       try {

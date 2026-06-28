@@ -203,6 +203,8 @@ watch(
   () => projectsStore.activeProjectId,
   async (projectId) => {
     if (!projectId) return
+    editorStore.resetProjectState()
+    generationStore.resetProjectState()
     await Promise.all([editorStore.loadChapters(projectId), generationStore.loadJobs(projectId)])
     syncBridgeStatus()
   },

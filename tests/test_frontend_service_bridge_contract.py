@@ -56,3 +56,27 @@ def test_chapter_page_supports_creating_planned_chapters_through_service_bridge(
     assert "isActiveChapterPlanned" in chapters_page
     assert "status === 'planned'" in chapters_page
     assert "创建章节文件" in chapters_page
+
+
+def test_project_page_supports_real_project_create_and_switch_through_service_bridge():
+    service_bridge = (FRONTEND_SRC / "services" / "serviceBridge.ts").read_text(encoding="utf-8")
+    projects_store = (FRONTEND_SRC / "stores" / "projects.ts").read_text(encoding="utf-8")
+    projects_page = (FRONTEND_SRC / "pages" / "ProjectsPage.vue").read_text(encoding="utf-8")
+
+    assert "async createProject(" in service_bridge
+    assert "async switchProject(" in service_bridge
+    assert "requestJson<Project>('/api/projects'" in service_bridge
+    assert "requestJson<Project>('/api/projects/switch'" in service_bridge
+    assert "allowMockFallback" not in service_bridge.split("async createProject(", 1)[1].split("async", 1)[0]
+    assert "allowMockFallback" not in service_bridge.split("async switchProject(", 1)[1].split("async", 1)[0]
+
+    assert "async createProject(" in projects_store
+    assert "async switchProject(" in projects_store
+    assert "loadProjects(true)" in projects_store
+
+    assert "新建项目" in projects_page
+    assert "打开已有项目" in projects_page
+    assert "createProject" in projects_page
+    assert "switchProject" in projects_page
+    assert "canWriteToBackend" in projects_page
+    assert "writeUnavailableMessage" in projects_page

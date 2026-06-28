@@ -11,6 +11,19 @@ export interface Project {
   chaptersCompleted: number
 }
 
+export interface ProjectCreateRequest {
+  outputPath: string
+  topic: string
+  genre: string
+  numChapters: number
+  wordNumber: number
+}
+
+export interface ProjectSwitchRequest {
+  projectId?: string
+  outputPath?: string
+}
+
 export type ChapterStatus = 'planned' | 'draft' | 'drafting' | 'review' | 'final'
 
 export interface Chapter {

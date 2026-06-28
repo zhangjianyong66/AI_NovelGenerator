@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 
 import { serviceBridge } from '@/services/serviceBridge'
-import type { Project } from '@/services/types'
+import type { Project, ProjectCreateRequest, ProjectSwitchRequest } from '@/services/types'
 
 export const useProjectsStore = defineStore('projects', {
   state: () => ({
@@ -15,8 +15,8 @@ export const useProjectsStore = defineStore('projects', {
     },
   },
   actions: {
-    async loadProjects() {
-      if (this.projects.length > 0) return
+    async loadProjects(force = false) {
+      if (!force && this.projects.length > 0) return
       this.isLoading = true
       try {
         this.projects = await serviceBridge.listProjects()
@@ -29,6 +29,30 @@ export const useProjectsStore = defineStore('projects', {
     },
     selectProject(projectId: string) {
       this.activeProjectId = projectId
+    },
+    async createProject(request: ProjectCreateRequest) {
+      this.isLoading = true
+      try {
+        const project = await serviceBridge.createProject(request)
+        this.activeProjectId = project.id
+        await this.loadProjects(true)
+        this.activeProjectId = this.projects.find((item) => item.status === 'active')?.id ?? project.id
+        return project
+      } finally {
+        this.isLoading = false
+      }
+    },
+    async switchProject(request: ProjectSwitchRequest) {
+      this.isLoading = true
+      try {
+        const project = await serviceBridge.switchProject(request)
+        this.activeProjectId = project.id
+        await this.loadProjects(true)
+        this.activeProjectId = this.projects.find((item) => item.status === 'active')?.id ?? project.id
+        return project
+      } finally {
+        this.isLoading = false
+      }
     },
   },
 })
