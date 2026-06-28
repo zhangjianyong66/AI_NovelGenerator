@@ -424,3 +424,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: 前端章节生命周期最小闭环
+
+**Date**: 2026-06-28
+**Task**: 前端章节生命周期最小闭环
+**Branch**: `main`
+
+### Summary
+
+支持章节列表显示 planned 计划章节，新增创建缺失 chapter_X.txt 的后端接口与前端章节页入口，并更新验收文档和项目规范。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `981c7b1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
