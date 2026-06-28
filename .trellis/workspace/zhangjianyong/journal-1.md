@@ -560,3 +560,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 17: 补齐前端批量定稿和项目参数隔离
+
+**Date**: 2026-06-29
+**Task**: 补齐前端批量定稿和项目参数隔离
+**Branch**: `main`
+
+### Summary
+
+接入批量定稿真实执行，增加最近项目参数快照与切换恢复，更新前端提示、验收文档和 Trellis 规范，并完成全量后端测试与前端类型/构建验证。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3c1148c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

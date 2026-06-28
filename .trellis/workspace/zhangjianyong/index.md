@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 16
-- **Last Active**: 2026-06-28
+- **Total Sessions**: 17
+- **Last Active**: 2026-06-29
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~562 | Active |
+| `journal-1.md` | ~595 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 17 | 2026-06-29 | 补齐前端批量定稿和项目参数隔离 | `3c1148c` | `main` |
 | 16 | 2026-06-28 | 接入前端一致性审校真实执行 | `47f4bf7`, `a2b23af` | `main` |
 | 15 | 2026-06-28 | 前端项目管理真实可用闭环 | `a275e3e`, `55964a1`, `5dd78b2` | `main` |
 | 14 | 2026-06-28 | 前端知识库真实向量化 | `f800a5b`, `578d8ff` | `main` |
