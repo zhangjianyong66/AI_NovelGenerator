@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from app.services.generation_executor import GenerationStage as ExecutableGenerationStage, run_generation_job
 from app.services.generation_job_store import GenerationJobStore
-from chapter_directory_parser import get_chapter_info_from_blueprint
+from chapter_directory_parser import get_chapter_info_from_blueprint, parse_chapter_blueprint
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -354,10 +354,8 @@ def _chapter_response(
     directory_blueprint: str,
 ) -> Chapter:
     file_path = _chapter_file_path(output_path, chapter_number)
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="章节文件不存在")
-
-    content = file_path.read_text(encoding="utf-8")
+    exists = file_path.exists()
+    content = file_path.read_text(encoding="utf-8") if exists else ""
     chapter_info = get_chapter_info_from_blueprint(directory_blueprint, chapter_number)
     title = str(chapter_info.get("chapter_title") or f"第{chapter_number}章")
     synopsis = str(chapter_info.get("chapter_summary") or "")
@@ -366,7 +364,7 @@ def _chapter_response(
         projectId=project_id,
         order=chapter_number,
         title=title,
-        status="draft",
+        status="draft" if exists else "planned",
         words=_count_words(content),
         synopsis=synopsis,
         content=content,
@@ -381,6 +379,18 @@ def _list_chapter_numbers(output_path: Path) -> list[int]:
         match = re.fullmatch(r"chapter_(\d+)\.txt", file_path.name)
         if match:
             chapter_numbers.append(int(match.group(1)))
+    return sorted(chapter_numbers)
+
+
+def _planned_chapter_numbers(config: dict[str, Any], directory_blueprint: str) -> list[int]:
+    chapter_numbers = {
+        int(chapter["chapter_number"])
+        for chapter in parse_chapter_blueprint(directory_blueprint)
+        if int(chapter.get("chapter_number") or 0) > 0
+    }
+    configured_chapters = int((config.get("other_params") or {}).get("num_chapters") or 0)
+    if configured_chapters > 0:
+        chapter_numbers.update(range(1, configured_chapters + 1))
     return sorted(chapter_numbers)
 
 
@@ -782,13 +792,34 @@ def create_app(
 
     @app.get("/api/projects/{project_id}/chapters", response_model=list[Chapter])
     def list_chapters(project_id: str) -> list[Chapter]:
+        config = _load_config(config_path)
         output_path = _active_output_path(config_path)
         directory_path = output_path / "Novel_directory.txt"
         directory_blueprint = directory_path.read_text(encoding="utf-8") if directory_path.exists() else ""
+        chapter_numbers = sorted(
+            set(_list_chapter_numbers(output_path))
+            | set(_planned_chapter_numbers(config, directory_blueprint))
+        )
         return [
             _chapter_response(project_id, output_path, chapter_number, directory_blueprint)
-            for chapter_number in _list_chapter_numbers(output_path)
+            for chapter_number in chapter_numbers
         ]
+
+    @app.post("/api/chapters/{chapter_number}", response_model=Chapter)
+    def create_chapter(chapter_number: int) -> Chapter:
+        if chapter_number <= 0:
+            raise HTTPException(status_code=400, detail="章节号必须大于 0")
+        output_path = _active_output_path(config_path)
+        output_path.mkdir(parents=True, exist_ok=True)
+        file_path = _chapter_file_path(output_path, chapter_number)
+        try:
+            with file_path.open("x", encoding="utf-8"):
+                pass
+        except FileExistsError:
+            raise HTTPException(status_code=409, detail="章节文件已存在")
+        directory_path = output_path / "Novel_directory.txt"
+        directory_blueprint = directory_path.read_text(encoding="utf-8") if directory_path.exists() else ""
+        return _chapter_response("current", output_path, chapter_number, directory_blueprint)
 
     @app.put("/api/chapters/{chapter_number}", response_model=Chapter)
     def save_chapter(chapter_number: int, request: ChapterSaveRequest) -> Chapter:

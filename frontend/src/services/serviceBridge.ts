@@ -189,6 +189,12 @@ export const serviceBridge = {
     })
   },
 
+  async createChapter(chapterOrder: number): Promise<Chapter> {
+    return requestJson<Chapter>(`/api/chapters/${chapterOrder}`, {
+      method: 'POST',
+    })
+  },
+
   async listGenerationJobs(projectId: string): Promise<GenerationJob[]> {
     return withMockFallback(
       () => requestJson<GenerationJob[]>(`/api/projects/${encodeURIComponent(projectId)}/jobs`, {

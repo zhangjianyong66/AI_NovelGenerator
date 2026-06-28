@@ -78,6 +78,82 @@ API 当前固定支持的核心项目文件映射在 `app/api/server.py` 的 `CO
 - `GET /api/projects` 返回当前配置对应的单项目摘要，章节完成数来自输出目录下的 `chapter_<数字>.txt`。
 - `GET /api/knowledge` 汇总 `vectorstore/imported/` 下的导入文件和 `角色库/<分类>/<角色名>.txt` 角色文件。
 
+## Scenario: 文件系统章节生命周期
+
+### 1. Scope / Trigger
+
+- Trigger: 前端章节页需要从目录推进到可编辑章节，不再要求用户手动创建 `chapter_<数字>.txt`。
+- Scope: 本地 FastAPI 章节接口、输出目录根部章节文件、前端章节编辑页。
+
+### 2. Signatures
+
+- `GET /api/projects/{project_id}/chapters`
+- `POST /api/chapters/{chapter_number}`
+- `PUT /api/chapters/{chapter_number}`
+
+### 3. Contracts
+
+- `GET /api/projects/{project_id}/chapters` 返回已有章节文件和计划章节的并集：
+  - 已有文件来自输出目录根部 `chapter_<数字>.txt`。
+  - 计划章节来自 `Novel_directory.txt` 可解析章节号，以及 `other_params.num_chapters` 推导的 `1..N`。
+  - 缺失文件的计划章节返回 `status="planned"`、`content=""`、`words=0`。
+  - 已有章节返回 `status="draft"`，正文来自根部 `chapter_<数字>.txt`。
+- `POST /api/chapters/{chapter_number}` 只创建缺失的根部 `chapter_<数字>.txt`，不写 legacy `chapters/`，不覆盖已有文件。
+- `PUT /api/chapters/{chapter_number}` 只保存已存在的根部章节文件；不得自动创建缺失章节。
+- 标题和简介尽量从 `Novel_directory.txt` 补齐，解析不到时使用 `第<数字>章` 和空简介。
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected |
+| --- | --- |
+| `POST` 章节号小于等于 0 | HTTP `400`，`detail="章节号必须大于 0"` |
+| `POST` 目标 `chapter_<数字>.txt` 已存在 | HTTP `409`，`detail="章节文件已存在"`，不得覆盖正文 |
+| `PUT` 目标章节文件不存在 | HTTP `404`，`detail="章节文件不存在"` |
+| 输出路径缺失 | 沿用 `_active_output_path()`，返回中文 `400` |
+
+### 5. Good/Base/Bad Cases
+
+- Good: `Novel_directory.txt` 包含第 2 章且只有 `chapter_1.txt` 时，列表返回第 1 章 `draft` 和第 2 章 `planned`。
+- Base: 用户对第 2 章调用 `POST /api/chapters/2` 后，根部出现空 `chapter_2.txt`，随后 `PUT` 可保存正文。
+- Bad: `PUT /api/chapters/2` 在文件不存在时自动创建文件；这会模糊“创建”和“保存”两个用户动作。
+- Bad: 把计划章节计入 `GET /api/projects` 的 `chaptersCompleted`；完成数仍只按真实 `chapter_<数字>.txt` 文件计算。
+
+### 6. Tests Required
+
+- API 测试用临时 `config.json` 和输出目录隔离真实数据。
+- 断言列表混合已有章节和计划章节，顺序按章节号。
+- 断言 `POST` 创建缺失章节并返回可编辑章节。
+- 断言 `POST` 对已有章节返回 `409` 且磁盘正文未变。
+- 断言新建章节可以继续通过 `PUT` 保存。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+@app.put("/api/chapters/{chapter_number}")
+def save_chapter(chapter_number: int, request: ChapterSaveRequest):
+    _chapter_file_path(output_path, chapter_number).write_text(request.content)
+```
+
+问题：缺失章节会被保存动作隐式创建，前端无法区分“计划章节尚未落盘”和“真实章节已存在”。
+
+#### Correct
+
+```python
+@app.post("/api/chapters/{chapter_number}")
+def create_chapter(chapter_number: int):
+    with file_path.open("x", encoding="utf-8"):
+        pass
+
+@app.put("/api/chapters/{chapter_number}")
+def save_chapter(chapter_number: int, request: ChapterSaveRequest):
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="章节文件不存在")
+```
+
+正确做法：创建与保存分离，`open("x")` 防止覆盖已有正文。
+
 ## 向量库和知识库
 
 - 向量库默认在当前输出目录的 `vectorstore/`。

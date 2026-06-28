@@ -42,3 +42,17 @@ def test_generation_page_surfaces_real_backend_boundaries():
     assert "任务已记录在本地任务库" in job_detail
     assert "项目：" in job_detail
     assert "开始：" in job_detail
+
+
+def test_chapter_page_supports_creating_planned_chapters_through_service_bridge():
+    service_bridge = (FRONTEND_SRC / "services" / "serviceBridge.ts").read_text(encoding="utf-8")
+    editor_store = (FRONTEND_SRC / "stores" / "editor.ts").read_text(encoding="utf-8")
+    chapters_page = (FRONTEND_SRC / "pages" / "ChaptersPage.vue").read_text(encoding="utf-8")
+
+    assert "async createChapter(" in service_bridge
+    assert "method: 'POST'" in service_bridge
+    assert "async createActiveChapter()" in editor_store
+    assert "createActiveChapter" in chapters_page
+    assert "isActiveChapterPlanned" in chapters_page
+    assert "status === 'planned'" in chapters_page
+    assert "创建章节文件" in chapters_page

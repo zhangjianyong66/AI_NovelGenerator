@@ -129,7 +129,9 @@ onMounted(async () => {
 })
 
 const selectedJob = computed(() => jobs.value.find((job) => job.id === selectedJobId.value) ?? jobs.value[0])
-const availableChapterNumbers = computed(() => new Set(chapters.value.map((chapter) => chapter.order)))
+const availableChapterNumbers = computed(
+  () => new Set(chapters.value.filter((chapter) => chapter.status !== 'planned').map((chapter) => chapter.order)),
+)
 const currentChapterNumber = computed(() => Number(projectConfig.value?.novelParams.chapterNum || 0))
 const isCurrentChapterValid = computed(() => Number.isInteger(currentChapterNumber.value) && currentChapterNumber.value > 0)
 const hasCurrentChapterFile = computed(() => availableChapterNumbers.value.has(currentChapterNumber.value))

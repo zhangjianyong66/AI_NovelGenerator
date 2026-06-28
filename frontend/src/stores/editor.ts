@@ -125,6 +125,28 @@ export const useEditorStore = defineStore('editor', {
         this.isSaving = false
       }
     },
+    async createActiveChapter() {
+      const activeChapter = this.activeChapter
+      if (!activeChapter) return
+
+      this.isSaving = true
+      this.error = ''
+      try {
+        const createdChapter = await serviceBridge.createChapter(activeChapter.order)
+        const hasExistingEntry = this.chapters.some((chapter) => chapter.id === createdChapter.id)
+        this.chapters = hasExistingEntry
+          ? this.chapters.map((chapter) => (chapter.id === createdChapter.id ? createdChapter : chapter))
+          : [...this.chapters, createdChapter].sort((left, right) => left.order - right.order)
+        this.activeChapterId = createdChapter.id
+        this.chapterDrafts[createdChapter.id] = createdChapter.content
+        this.lastSavedAt = createdChapter.updatedAt
+      } catch (error) {
+        this.error = getErrorMessage(error, '创建章节失败')
+        throw error
+      } finally {
+        this.isSaving = false
+      }
+    },
     async loadProjectFiles() {
       this.isLoading = true
       this.error = ''

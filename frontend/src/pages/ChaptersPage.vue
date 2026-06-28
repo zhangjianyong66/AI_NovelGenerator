@@ -7,8 +7,18 @@
         <button class="ghost-button" type="button" @click="selectAdjacentChapter('previous')">上一章</button>
         <button class="ghost-button" type="button" @click="selectAdjacentChapter('next')">下一章</button>
         <button
-          class="primary-button"
+          v-if="isActiveChapterPlanned"
+          class="ghost-button"
           :disabled="isSaving || !activeChapter || !canWriteToBackend"
+          type="button"
+          @click="createActiveChapter"
+        >
+          <FilePlus :size="16" />
+          {{ isSaving ? '创建中' : '创建章节文件' }}
+        </button>
+        <button
+          class="primary-button"
+          :disabled="isSaving || !activeChapter || isActiveChapterPlanned || !canWriteToBackend"
           type="button"
           @click="saveActiveChapter"
         >
@@ -25,7 +35,7 @@
       <aside class="panel chapter-list">
         <div class="panel-body">
           <h3 class="panel-title">章节列表</h3>
-          <StatusMessage v-if="chapters.length === 0" type="empty" message="当前输出目录尚未发现 chapter_X.txt，请先准备章节文件。" />
+          <StatusMessage v-if="chapters.length === 0" type="empty" message="当前输出目录尚未发现章节，请先生成或编辑 Novel_directory.txt。" />
           <ChapterNavigator
             :chapters="chapters"
             :active-chapter-id="activeChapter?.id"
@@ -40,14 +50,15 @@
             :model-value="activeChapterDraft"
             :title="activeChapter?.title ?? '暂无章节'"
             :dirty="hasDirtyChapter"
-            :readonly="!canWriteToBackend || !activeChapter"
+            :readonly="!canWriteToBackend || !activeChapter || isActiveChapterPlanned"
             :save-state="saveState"
-            empty-message="当前输出目录尚未加载到章节正文。"
+            :empty-message="editorEmptyMessage"
             min-height="470px"
             aria-label="章节正文"
             @save="saveActiveChapter"
             @update:model-value="editorStore.updateActiveChapterDraft"
           />
+          <StatusMessage v-if="isActiveChapterPlanned" type="info" message="该章节还没有 chapter_X.txt。创建章节文件后即可输入正文并保存。" />
           <StatusMessage type="error" :message="errorMessage" />
         </div>
       </section>
@@ -57,7 +68,7 @@
           <h3 class="panel-title">章节元信息</h3>
           <dl v-if="activeChapter">
             <dt>状态</dt>
-            <dd>{{ activeChapter.status }}</dd>
+            <dd>{{ chapterStatusLabel }}</dd>
             <dt>视角</dt>
             <dd>{{ activeChapter.viewpoint }}</dd>
             <dt>字数</dt>
@@ -73,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import { Save } from '@lucide/vue'
+import { FilePlus, Save } from '@lucide/vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
@@ -102,6 +113,21 @@ const bridgeStatus = ref<ServiceBridgeStatus>({ ...serviceBridge.getStatus() })
 const saveState = computed(() => (saveMessage.value ? { state: 'saved' as const, text: saveMessage.value } : null))
 const canWriteToBackend = computed(() => serviceBridge.canWrite(bridgeStatus.value))
 const writeUnavailableMessage = computed(() => serviceBridge.getWriteUnavailableMessage(bridgeStatus.value))
+const isActiveChapterPlanned = computed(() => activeChapter.value?.status === 'planned')
+const editorEmptyMessage = computed(() =>
+  isActiveChapterPlanned.value ? '该章节文件尚未创建。' : '当前输出目录尚未加载到章节正文。',
+)
+const chapterStatusLabel = computed(() => {
+  if (!activeChapter.value) return ''
+  const labels = {
+    planned: '计划中',
+    drafting: '草稿中',
+    draft: '草稿',
+    review: '审校',
+    final: '定稿',
+  } as Record<string, string>
+  return labels[activeChapter.value.status] ?? activeChapter.value.status
+})
 
 const syncBridgeStatus = () => {
   bridgeStatus.value = { ...serviceBridge.getStatus() }
@@ -145,6 +171,11 @@ const saveActiveChapter = async () => {
     return
   }
 
+  if (isActiveChapterPlanned.value) {
+    errorMessage.value = '请先创建章节文件。'
+    return
+  }
+
   try {
     await editorStore.saveActiveChapter()
     syncBridgeStatus()
@@ -159,6 +190,29 @@ const saveActiveChapter = async () => {
         : typeof error === 'object' && error !== null && 'message' in error
           ? String(error.message)
           : '保存失败'
+  }
+}
+
+const createActiveChapter = async () => {
+  saveMessage.value = ''
+  errorMessage.value = ''
+  if (!canWriteToBackend.value) {
+    errorMessage.value = writeUnavailableMessage.value
+    return
+  }
+
+  try {
+    await editorStore.createActiveChapter()
+    syncBridgeStatus()
+    saveMessage.value = '章节文件已创建'
+  } catch (error) {
+    syncBridgeStatus()
+    errorMessage.value =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'object' && error !== null && 'message' in error
+          ? String(error.message)
+          : '创建章节失败'
   }
 }
 

@@ -11,7 +11,7 @@ export interface Project {
   chaptersCompleted: number
 }
 
-export type ChapterStatus = 'planned' | 'drafting' | 'review' | 'final'
+export type ChapterStatus = 'planned' | 'draft' | 'drafting' | 'review' | 'final'
 
 export interface Chapter {
   id: string
