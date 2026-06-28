@@ -39,6 +39,9 @@ def test_generation_page_surfaces_real_backend_boundaries():
     assert "missingBatchChapters" in generation_page
     assert "normalizeGenerationError" in generation_page
     assert "任务历史保存在本地状态库" in generation_page
+    assert "批量定稿" in generation_page
+    assert "当前只创建任务记录" not in generation_page
+    assert "等待执行器接入" not in generation_page
     assert "任务已记录在本地任务库" in job_detail
     assert "项目：" in job_detail
     assert "开始：" in job_detail

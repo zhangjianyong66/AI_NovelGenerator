@@ -254,11 +254,11 @@ GENERATION_STAGE_TITLES = {
     "draft": "生成章节草稿",
     "finalization": "润色章节定稿",
     "consistency": "一致性审校",
-    "batch": "批量生成草稿",
+    "batch": "批量定稿章节",
 }
 
 CHAPTER_GENERATION_STAGES = {"draft", "finalization", "consistency"}
-EXECUTABLE_GENERATION_STAGES = {"architecture", "directory", "draft", "finalization", "consistency"}
+EXECUTABLE_GENERATION_STAGES = {"architecture", "directory", "draft", "finalization", "consistency", "batch"}
 
 
 def _default_config() -> dict[str, Any]:
@@ -418,14 +418,49 @@ def _project_genre_from_config(config: dict[str, Any], fallback_genre: str = "")
     return str(fallback_genre or params.get("genre") or "")
 
 
+PROJECT_PARAM_KEYS = {
+    "filepath",
+    "topic",
+    "genre",
+    "num_chapters",
+    "word_number",
+    "chapter_num",
+    "user_guidance",
+    "characters_involved",
+    "key_items",
+    "scene_location",
+    "time_constraint",
+}
+
+
+def _project_params_snapshot(config: dict[str, Any], output_path: Path | None = None) -> dict[str, Any]:
+    params = config.get("other_params") or {}
+    snapshot = {key: params.get(key, "") for key in PROJECT_PARAM_KEYS if key in params}
+    if output_path is not None:
+        snapshot["filepath"] = str(output_path)
+    return snapshot
+
+
+def _upsert_project_from_config(
+    project_store: ProjectStore,
+    config: dict[str, Any],
+    output_path: Path,
+    *,
+    fallback_title: str = "",
+    fallback_genre: str = "",
+) -> None:
+    project_store.upsert_project(
+        output_path,
+        _project_title_for_path(config, output_path, fallback_title),
+        _project_genre_from_config(config, fallback_genre),
+        _project_params_snapshot(config, output_path),
+    )
+
+
 def _upsert_current_project(project_store: ProjectStore, config_path: Path) -> None:
     config = _load_config(config_path)
     output_path = _active_output_path(config_path)
-    project_store.upsert_project(
-        output_path,
-        _project_title_for_path(config, output_path),
-        _project_genre_from_config(config),
-    )
+    _upsert_project_from_config(project_store, config, output_path)
 
 
 def _recent_project_summary(
@@ -435,22 +470,28 @@ def _recent_project_summary(
 ) -> ProjectSummary:
     output_path = Path(project["output_path"])
     is_active = output_path == active_output_path
-    params = active_config.get("other_params") or {}
-    chapters_total = int(params.get("num_chapters") or 0) if is_active else 0
+    params = (active_config.get("other_params") or {}) if is_active else (project.get("params") or {})
+    chapters_total = int(params.get("num_chapters") or 0)
     return _project_summary_from_parts(
         project_id="current" if is_active else project["id"],
         output_path=output_path,
-        title=project.get("title", ""),
-        genre=project.get("genre", ""),
+        title=str(params.get("topic") or project.get("title", "")),
+        genre=str(params.get("genre") or project.get("genre", "")),
         chapters_total=chapters_total,
         status="active" if is_active else "draft",
         updated_at="" if is_active else project.get("updated_at", ""),
     )
 
 
-def _switch_config_output_path(config_path: Path, output_path: Path) -> dict[str, Any]:
+def _switch_config_to_project(config_path: Path, output_path: Path, project: dict[str, Any] | None = None) -> dict[str, Any]:
     config = _load_config(config_path)
     params = config.setdefault("other_params", {})
+    project_params = (project or {}).get("params") or {}
+    if project_params:
+        params.update({key: project_params.get(key, "") for key in PROJECT_PARAM_KEYS if key in project_params})
+    else:
+        for key in PROJECT_PARAM_KEYS - {"filepath"}:
+            params[key] = 0 if key in {"num_chapters", "word_number"} else ""
     params["filepath"] = str(output_path)
     _save_config(config_path, config)
     return config
@@ -821,6 +862,11 @@ def create_app(
     def save_project_config(project_config: ProjectConfig) -> ProjectConfig:
         config = _merge_project_config(_load_config(config_path), project_config)
         _save_config(config_path, config)
+        _upsert_project_from_config(
+            project_store,
+            config,
+            _normalize_output_path(project_config.outputPath),
+        )
         return _project_config_from_legacy(config)
 
     @app.get("/api/model-settings", response_model=ModelSettings)
@@ -937,15 +983,22 @@ def create_app(
             }
         )
         _save_config(config_path, config)
-        project_store.upsert_project(
+        _upsert_project_from_config(
+            project_store,
+            config,
             output_path,
-            _project_title_for_path(config, output_path, request.topic),
-            _project_genre_from_config(config, request.genre),
+            fallback_title=request.topic,
+            fallback_genre=request.genre,
         )
         return _project_summary(config_path)
 
     @app.post("/api/projects/switch", response_model=ProjectSummary)
     def switch_project(request: ProjectSwitchRequest) -> ProjectSummary:
+        active_config = _load_config(config_path)
+        active_output_path = _active_output_path(config_path)
+        _upsert_project_from_config(project_store, active_config, active_output_path)
+
+        recent_project = None
         if request.projectId:
             recent_project = project_store.get_project(request.projectId)
             if recent_project is None:
@@ -959,12 +1012,12 @@ def create_app(
         if not output_path.is_dir():
             raise HTTPException(status_code=400, detail="项目输出路径不存在")
 
-        config = _switch_config_output_path(config_path, output_path)
-        project_store.upsert_project(
-            output_path,
-            _project_title_for_path(config, output_path),
-            _project_genre_from_config(config),
-        )
+        if recent_project is None:
+            project_id = ProjectStore.project_id_for_path(output_path)
+            recent_project = project_store.get_project(project_id)
+
+        config = _switch_config_to_project(config_path, output_path, recent_project)
+        _upsert_project_from_config(project_store, config, output_path)
         return _project_summary(config_path)
 
     @app.get("/api/project-files", response_model=list[ProjectFile])
@@ -1091,6 +1144,8 @@ def create_app(
                 auto_enrich=request.autoEnrich,
                 minimum_words=request.minimumWords,
                 target_words=request.targetWords,
+                start_chapter=request.startChapter,
+                end_chapter=request.endChapter,
             )
             job.status = result.status
             job.progress = result.progress

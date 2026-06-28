@@ -1,12 +1,12 @@
 # Database Guidelines
 
-当前项目只有一个最小 SQLite 状态库用于保存前端生成任务历史和最近项目索引；核心业务数据仍由本地 `config.json`、输出目录文本文件、角色库目录、WebDAV 配置备份和 Chroma `vectorstore/` 承载。项目没有 ORM 或迁移系统。
+当前项目只有一个最小 SQLite 状态库用于保存前端生成任务历史、最近项目索引和最近项目参数快照；核心业务数据仍由本地 `config.json`、输出目录文本文件、角色库目录、WebDAV 配置备份和 Chroma `vectorstore/` 承载。项目没有 ORM 或迁移系统。
 
 ## 当前真实状态
 
 - 不存在 SQLAlchemy、Alembic、Django ORM、Prisma 或迁移系统。
 - `app/services/generation_job_store.py` 使用标准库 `sqlite3` 管理 `generation_jobs` 表，仅保存生成任务状态、日志、错误和创建请求参数。
-- `app/services/project_store.py` 使用同一个 SQLite 文件管理 `recent_projects` 表，仅保存最近项目索引；当前项目和项目参数仍以 `config.json` 为准。
+- `app/services/project_store.py` 使用同一个 SQLite 文件管理 `recent_projects` 表，保存最近项目索引和项目参数快照；根目录 `config.json` 仍是旧 GUI 和 API 的当前活动配置。
 - 默认任务状态库为项目根目录 `.local/state.sqlite3`，`.local/` 已被 `.gitignore` 忽略。
 - `app/api/server.py` 的 `create_app(config_file=...)` 通过可注入配置文件支持测试隔离。
 - `app/api/server.py` 的 `create_app(state_db_file=...)` 通过可注入数据库路径支持任务状态测试隔离。
@@ -44,7 +44,7 @@ def _chapter_file_path(output_path: Path, chapter_number: int) -> Path:
 
 ## 扩大数据库范围前的要求
 
-如果后续 milestone 要把 SQLite 从“最近项目索引”扩大到完整项目配置、章节、知识库或其他业务数据，必须先更新设计文档和本规范，并明确：
+如果后续 milestone 要把 SQLite 从“最近项目索引 + 项目参数快照”扩大到完整项目配置、章节、知识库或其他业务数据，必须先更新设计文档和本规范，并明确：
 
 - 数据库文件位置、备份和 `.gitignore` 规则。
 - schema owner、迁移工具和迁移执行入口。
@@ -60,7 +60,7 @@ def _chapter_file_path(output_path: Path, chapter_number: int) -> Path:
 
 - Trigger: 前端生成任务历史需要在后端重启后可恢复。
 - Scope: 仅 `POST /api/generation-jobs`、`GET /api/projects/{project_id}/jobs`、`GET /api/generation-jobs/{job_id}` 使用 SQLite 状态库。
-- Out of scope: 不把项目配置、章节正文、角色库、知识库或向量库迁移到 SQLite。
+- Out of scope: 不把章节正文、角色库、知识库或向量库迁移到 SQLite；项目参数只保存最近项目快照，根目录 `config.json` 仍是当前活动配置。
 
 ### 2. Signatures
 
@@ -109,7 +109,7 @@ def _chapter_file_path(output_path: Path, chapter_number: int) -> Path:
 
 - API tests must pass both `config_file` and `state_db_file` with temporary paths.
 - Required assertions:
-  - queued `batch` jobs survive app/client reconstruction.
+  - `batch` jobs survive app/client reconstruction with `done` or `failed` status and full logs.
   - done `consistency` jobs survive app/client reconstruction with审校 result log.
   - done jobs survive app/client reconstruction with progress, log, and null error.
   - failed jobs survive app/client reconstruction with Chinese error and log.

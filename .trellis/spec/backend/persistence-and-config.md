@@ -1,6 +1,6 @@
 # Persistence And Config
 
-当前项目没有 ORM。持久化由根目录 `config.json`、用户输出目录中的文本文件、角色库目录、WebDAV 远程配置备份、Chroma `vectorstore/` 和前端 SQLite 状态库组成。SQLite 当前保存生成任务历史和最近项目索引，不承载小说正文、完整项目配置、角色库或向量数据。
+当前项目没有 ORM。持久化由根目录 `config.json`、用户输出目录中的文本文件、角色库目录、WebDAV 远程配置备份、Chroma `vectorstore/` 和前端 SQLite 状态库组成。SQLite 当前保存生成任务历史、最近项目索引和最近项目参数快照，不承载小说正文、完整模型配置、角色库或向量数据。
 
 ## 本地配置
 
@@ -15,7 +15,8 @@
 - 本地状态库默认位于项目根目录 `.local/state.sqlite3`，`.local/` 已被 `.gitignore` 忽略。
 - 该库由 `app/services/generation_job_store.py` 和 `app/services/project_store.py` 使用标准库 `sqlite3` 管理，当前包含 `generation_jobs` 和 `recent_projects` 表。
 - `generation_jobs` 保存任务 ID、项目 ID、阶段、标题、状态、进度、开始时间、日志、错误和创建请求参数，供前端刷新或后端重启后恢复任务历史。
-- `recent_projects` 保存最近项目 ID、输出路径、标题、类型和最近打开时间，供前端项目页展示和切换；当前项目权威来源仍是 `config.json.other_params.filepath`。
+- `recent_projects` 保存最近项目 ID、输出路径、标题、类型、最近打开时间和 `other_params` 项目参数快照，供前端项目页展示、切换和恢复项目参数；当前活动项目权威来源仍是根目录 `config.json.other_params`。
+- 项目参数隔离第一版只覆盖 `other_params.filepath/topic/genre/num_chapters/word_number/chapter_num/user_guidance/characters_involved/key_items/scene_location/time_constraint`；`llm_configs`、`embedding_configs`、`choose_configs`、`proxy_setting`、`webdav_config`、API Key 和密码仍全局共享。
 - API 测试应通过 `create_app(state_db_file=tmp_path / "state.sqlite3")` 隔离状态库，不读写真正的 `.local/state.sqlite3`。
 - 删除 `.local/state.sqlite3` 只会清空生成任务历史和最近项目列表，不会删除 `config.json` 或小说输出文件。
 
@@ -78,7 +79,8 @@ API 当前固定支持的核心项目文件映射在 `app/api/server.py` 的 `CO
 
 - `GET /api/projects` 返回最近项目列表，当前 `config.json.other_params.filepath` 对应项目置顶并标记 `active`；章节完成数来自输出目录下的 `chapter_<数字>.txt`。
 - `POST /api/projects` 创建指定输出目录，写入当前 `config.json.other_params.filepath/topic/genre/num_chapters/word_number`，并 upsert 最近项目索引。
-- `POST /api/projects/switch` 通过最近项目 ID 或已有输出路径切换当前 `config.json.other_params.filepath`，不会删除或覆盖目标目录小说文件。
+- `POST /api/projects/switch` 通过最近项目 ID 或已有输出路径切换当前项目；切换前保存当前项目参数快照，切换后把目标项目参数快照恢复到根 `config.json.other_params`，不会删除或覆盖目标目录小说文件。
+- 目标项目没有参数快照时，只恢复 `filepath` 并清空其他项目参数，避免打开新目录时继承上一个项目的题材、章节数、当前章节和写作约束。
 - `GET /api/knowledge` 汇总 `vectorstore/imported/` 下的导入文件和 `角色库/<分类>/<角色名>.txt` 角色文件。
 
 ## Scenario: 文件系统章节生命周期
@@ -284,7 +286,7 @@ shutil.copy2(source_path, import_dir / source_path.name)
 
 - 不提交 `config.json`、`backup/`、`vectorstore/`、生成小说正文或真实密钥。
 - 不把前端保存类操作静默落到 mock 数据；保存应走本地 API。
-- 不把 SQLite 范围扩大到项目、章节、知识库等业务数据，除非先补设计、规范和测试。
+- 不把 SQLite 范围扩大到完整项目配置、章节、知识库等业务数据，除非先补设计、规范和测试；当前允许保存最近项目参数快照。
 - 不让测试读写真实根目录 `config.json`，必须使用临时路径。
 
 ## 代码例子

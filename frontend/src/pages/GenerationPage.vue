@@ -3,9 +3,8 @@
     <PageHeader title="生成任务" subtitle="创建后端生成任务，查看状态、日志和错误。" />
 
     <StatusMessage v-if="isLoading" type="loading" message="正在同步生成任务状态。" />
-    <StatusMessage type="info" message="设定、目录、草稿、定稿和审校已接入本地真实执行器，需要有效 LLM 配置，完成后会写入项目文件或任务日志。" />
+    <StatusMessage type="info" message="设定、目录、草稿、定稿、审校和批量定稿已接入本地真实执行器，需要有效 LLM 配置，完成后会写入项目文件或任务日志。" />
     <StatusMessage type="info" message="任务历史保存在本地状态库，后端重启后仍可查看日志、结果和错误。" />
-    <StatusMessage type="warning" message="批量阶段仍处于后续接入范围，当前只创建任务记录。" />
     <StatusMessage v-if="!canWriteToBackend" type="warning" :message="writeUnavailableMessage" />
     <StatusMessage type="error" :message="errorMessage" />
     <StatusMessage :type="chapterTargetStatus" :message="chapterTargetMessage" />
@@ -14,7 +13,7 @@
       <GenerationActions :disabled="isLoading || !canWriteToBackend" @create="createJob" @create-batch="createBatchJob" />
     </FormSection>
 
-    <FormSection title="批量参数" description="批量生成会使用下列章节范围、目标字数、最低字数和自动扩写设置。">
+    <FormSection title="批量定稿参数" description="批量定稿会逐章处理已有章节文件，并使用下列章节范围、目标字数、最低字数和自动扩写设置。">
       <StatusMessage :type="batchValidationStatus" :message="batchValidationMessage" />
       <div class="batch-grid">
         <TextField
