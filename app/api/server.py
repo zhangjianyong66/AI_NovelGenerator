@@ -234,7 +234,7 @@ GENERATION_STAGE_TITLES = {
 }
 
 CHAPTER_GENERATION_STAGES = {"draft", "finalization", "consistency"}
-EXECUTABLE_GENERATION_STAGES = {"architecture", "directory"}
+EXECUTABLE_GENERATION_STAGES = {"architecture", "directory", "draft", "finalization"}
 
 
 def _default_config() -> dict[str, Any]:
@@ -792,7 +792,7 @@ def create_app(config_file: str | Path | None = None) -> FastAPI:
         output_path = _active_output_path(config_path)
         config = _load_config(config_path)
         extra_log: list[str] = []
-        if request.stage in CHAPTER_GENERATION_STAGES:
+        if request.stage == "consistency":
             chapter_number = request.chapterNumber or int(
                 (config.get("other_params") or {}).get("chapter_num") or 0
             )
@@ -840,7 +840,15 @@ def create_app(config_file: str | Path | None = None) -> FastAPI:
             job.status = "running"
             job.progress = 5
             job.log.append("任务已开始执行真实生成器")
-            result = run_generation_job(config, cast(ExecutableGenerationStage, request.stage), output_path)
+            result = run_generation_job(
+                config,
+                cast(ExecutableGenerationStage, request.stage),
+                output_path,
+                chapter_number=request.chapterNumber,
+                auto_enrich=request.autoEnrich,
+                minimum_words=request.minimumWords,
+                target_words=request.targetWords,
+            )
             job.status = result.status
             job.progress = result.progress
             job.log.extend(result.log)

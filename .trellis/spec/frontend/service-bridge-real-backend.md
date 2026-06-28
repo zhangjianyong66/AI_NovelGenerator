@@ -43,7 +43,8 @@ export interface ServiceBridgeStatus {
 | 读类接口请求失败且有 mock fallback | `mode = 'mock'`，页面显示“离线预览”，写按钮禁用 |
 | 写类操作在 `mock` 或 `disconnected` 模式触发 | 提前显示 `getWriteUnavailableMessage()`，不发起 mock 写入 |
 | 章节保存返回 404 | 显示“章节文件不存在”，不自动创建 `chapter_X.txt` |
-| 生成任务创建成功 | 状态为 `queued`，日志说明等待执行器接入，不提示真实生成完成 |
+| 已接入阶段生成任务创建成功 | `architecture`、`directory`、`draft`、`finalization` 同步返回 `done` 或 `failed`，页面展示任务状态、错误和日志 |
+| 未接入阶段生成任务创建成功 | `consistency`、`batch` 返回 `queued`，日志说明等待执行器接入，不提示真实生成完成 |
 | 生成任务创建返回 400 `{"detail": "章节文件不存在：2"}` | 页面展示“章节文件不存在：2”或带行动建议的等价文案 |
 
 ### 5. Good/Base/Bad Cases
@@ -56,12 +57,13 @@ export interface ServiceBridgeStatus {
 
 - `cd frontend && npm run typecheck`
 - `cd frontend && npm run build`
-- 前端源码/合约测试应覆盖生成任务页的真实后端边界：目标章节提示、批量缺章提示、后端错误 `detail` 透传、`queued` 详情解释。
+- 前端源码/合约测试应覆盖生成任务页的真实后端边界：目标章节提示、草稿不要求预先存在章节文件、批量缺章提示、后端错误 `detail` 透传、`queued` 详情解释。
 - 真实后端冒烟：
   - 保存项目输出目录。
   - 工作台保存核心项目文件并检查真实文件落盘。
   - 章节页保存已存在 `chapter_1.txt` 并检查真实文件落盘。
-  - 创建生成任务并确认 `queued` 与等待执行器日志。
+  - 创建已接入阶段生成任务并确认 `done` / `failed`、错误和日志展示。
+  - 创建未接入阶段生成任务并确认 `queued` 与等待执行器日志。
 - 离线预览冒烟：
   - 使用不可用 API 地址启动前端或停止后端。
   - 确认页面显示离线预览或断线状态。
@@ -94,5 +96,5 @@ const writeUnavailableMessage = computed(() =>
 - 项目页：展示当前项目、输出路径和小说参数；本地 API 没有创建项目接口时，不展示“新建项目”主操作。
 - 工作台：只负责核心项目文件编辑闭环；章节导航只作为上下文和跳转线索，不承担章节正文保存。
 - 章节编辑页：只编辑已存在的 `chapter_X.txt`，文件不存在时提示用户先准备章节文件。
-- 生成任务页：只创建后端 queued 任务；在真实执行器接入前，不承诺生成或修改小说文件。
+- 生成任务页：通过后端创建任务。已接入阶段包括设定、目录、草稿和定稿，会同步真实执行并返回 `done` / `failed`；未接入阶段包括审校和批量，只创建 queued 任务，不承诺生成或修改小说文件。
 - 知识库页：读类信息可离线预览；导入、清理、保存角色、写入章节参数必须要求真实后端。

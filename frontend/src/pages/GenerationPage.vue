@@ -3,8 +3,8 @@
     <PageHeader title="生成任务" subtitle="创建后端生成任务，查看状态、日志和错误。" />
 
     <StatusMessage v-if="isLoading" type="loading" message="正在同步生成任务状态。" />
-    <StatusMessage type="info" message="设定和目录阶段已接入本地真实执行器，需要有效 LLM 配置，完成后会写入项目文件。" />
-    <StatusMessage type="warning" message="草稿、定稿、审校和批量阶段仍处于后续接入范围，当前只创建任务记录。" />
+    <StatusMessage type="info" message="设定、目录、草稿和定稿已接入本地真实执行器，需要有效 LLM 配置，完成后会写入项目文件。" />
+    <StatusMessage type="warning" message="审校和批量阶段仍处于后续接入范围，当前只创建任务记录。" />
     <StatusMessage v-if="!canWriteToBackend" type="warning" :message="writeUnavailableMessage" />
     <StatusMessage type="error" :message="errorMessage" />
     <StatusMessage :type="chapterTargetStatus" :message="chapterTargetMessage" />
@@ -79,6 +79,8 @@ import { useProjectsStore } from '@/stores/projects'
 type StatusMessageType = 'success' | 'error' | 'warning' | 'loading' | 'empty' | 'info'
 
 const chapterStages = new Set<GenerationStage>(['draft', 'finalization', 'consistency'])
+const existingChapterStages = new Set<GenerationStage>(['finalization', 'consistency'])
+const refreshChapterStages = new Set<GenerationStage>(['draft', 'finalization'])
 const projectsStore = useProjectsStore()
 const generationStore = useGenerationStore()
 const { jobs, isLoading } = storeToRefs(generationStore)
@@ -141,9 +143,9 @@ const chapterTargetMessage = computed(() => {
     return '章节类任务需要当前章节号，请先在设置页填写大于 0 的当前章节。'
   }
   if (!hasCurrentChapterFile.value) {
-    return `章节类任务将使用第 ${currentChapterNumber.value} 章，但当前输出目录没有 chapter_${currentChapterNumber.value}.txt。`
+    return `草稿任务可生成第 ${currentChapterNumber.value} 章；定稿和审校需要当前输出目录已有 chapter_${currentChapterNumber.value}.txt。`
   }
-  return `章节类任务将使用第 ${currentChapterNumber.value} 章：chapter_${currentChapterNumber.value}.txt。`
+  return `草稿可覆盖生成第 ${currentChapterNumber.value} 章；定稿和审校将使用 chapter_${currentChapterNumber.value}.txt。`
 })
 const missingBatchChapters = computed(() => {
   const missing: number[] = []
@@ -177,6 +179,12 @@ const validateChapterStage = () => {
   if (!isCurrentChapterValid.value) {
     return '当前章节号为空或不是正整数，请先在设置页填写当前章节。'
   }
+  return ''
+}
+
+const validateExistingChapterStage = () => {
+  const chapterValidation = validateChapterStage()
+  if (chapterValidation) return chapterValidation
   if (!hasCurrentChapterFile.value) {
     return `当前输出目录没有 chapter_${currentChapterNumber.value}.txt，请先准备章节文件。`
   }
@@ -204,7 +212,7 @@ const createJob = async (stage: GenerationStage) => {
     return
   }
   if (chapterStages.has(stage)) {
-    const validationMessage = validateChapterStage()
+    const validationMessage = existingChapterStages.has(stage) ? validateExistingChapterStage() : validateChapterStage()
     if (validationMessage) {
       errorMessage.value = validationMessage
       return
@@ -216,6 +224,9 @@ const createJob = async (stage: GenerationStage) => {
       stage,
       chapterNumber: chapterStages.has(stage) ? currentChapterNumber.value : undefined,
     })
+    if (refreshChapterStages.has(stage)) {
+      await loadGenerationContext()
+    }
     syncBridgeStatus()
     selectedJobId.value = jobs.value[0]?.id ?? selectedJobId.value
   } catch (error) {

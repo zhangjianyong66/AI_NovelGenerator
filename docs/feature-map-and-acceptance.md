@@ -46,8 +46,8 @@ npm run dev
 | 模型配置 | 管理 LLM、Embedding、代理、阶段模型 | 完整支持 | 真实支持配置保存；LLM 测试只检查字段 | `GET/PUT /api/model-settings`，`POST /api/model-settings/test-llm` | 保存一个测试配置，不填真实密钥时应提示缺少 API Key |
 | 小说设定生成 | 生成 `Novel_setting.txt` | 完整支持 | 真实支持，需要有效 LLM 配置 | `POST /api/generation-jobs` 同步执行 `architecture`，成功返回 `done` | 配置有效 LLM 后创建设定任务，检查 `Novel_setting.txt` 非空 |
 | 章节目录生成 | 生成 `Novel_directory.txt` | 完整支持 | 真实支持，需要先有小说设定 | `POST /api/generation-jobs` 同步执行 `directory`，成功返回 `done` | 先生成设定，再创建目录任务，检查 `Novel_directory.txt` 非空 |
-| 章节草稿生成 | 生成 `outline_X.txt` 和 `chapter_X.txt` | 完整支持 | 仅创建排队任务；要求对应 `chapter_X.txt` 已存在 | 同上，`draft` 会检查章节文件 | 先手动准备 `chapter_1.txt`，再创建草稿任务 |
-| 章节定稿 | 更新章节、摘要、角色状态、剧情要点和向量库 | 完整支持 | 仅创建排队任务；不更新文件 | 同上，`finalization` 会检查章节文件 | 只验收任务日志，不期待文件变化 |
+| 章节草稿生成 | 生成 `chapter_X.txt` | 完整支持 | 真实支持，需要有效 LLM 配置和章节目录 | 同上，`draft` 同步执行旧草稿函数，并把 `chapters/chapter_X.txt` 同步到前端读取的 `chapter_X.txt` | 先生成目录，再创建草稿任务，检查 `chapter_1.txt` 非空 |
+| 章节定稿 | 更新章节、摘要、角色状态和向量库 | 完整支持 | 真实支持，需要已有章节正文和有效 LLM 配置 | 同上，`finalization` 以根目录 `chapter_X.txt` 为输入，同步到旧 `chapters/` 后执行定稿 | 编辑章节后创建定稿任务，检查 `global_summary.txt` 和 `character_state.txt` |
 | 一致性审校 | 检查章节逻辑冲突 | 完整支持 | 仅创建排队任务；不执行审校 | 同上，`consistency` 会检查章节文件 | 只验收任务日志，不期待审校结果 |
 | 核心项目文件 | 查看/编辑设定、目录、角色状态、全局摘要 | 支持 | 真实支持 | `GET /api/project-files`，`PUT /api/project-files/{file_id}` | 在工作台或章节相关页面编辑测试文本并检查文件落盘 |
 | 章节编辑 | 查看/编辑 `chapter_X.txt` | 支持 | 真实支持已存在章节文件 | `GET /api/projects/{project_id}/chapters`，`PUT /api/chapters/{chapter_number}` | 准备 `chapter_1.txt`，编辑保存后检查文件内容 |
@@ -57,7 +57,7 @@ npm run dev
 | 角色库 | 管理 `角色库/<分类>/<角色名>.txt` | 完整支持，包括较复杂的角色导入/分析 | 支持角色文件导入、查看、保存、写入涉及角色 | `GET/PUT /api/roles/...`，`POST /api/roles/import` | 准备角色 txt，导入后编辑保存 |
 | WebDAV | 备份/恢复 `config.json` | 支持 | 支持配置保存、连接测试、备份、恢复 | `GET/PUT /api/webdav-config`，`POST /api/webdav/*` | 无 API Key 冒烟只保存配置，不测试真实远程 |
 
-重要边界：新前端生成任务当前只有“小说设定”和“章节目录”接入真实本地执行器；草稿、定稿、审校和批量仍只创建任务记录，不会调用 LLM 或修改小说文件。
+重要边界：新前端生成任务当前“小说设定”“章节目录”“章节草稿”和“章节定稿”已接入同步真实执行器；一致性审校和批量生成仍只创建任务记录，不会调用 LLM 或修改小说文件。章节草稿/定稿为兼容旧 GUI，会在输出目录根部 `chapter_X.txt` 与旧函数使用的 `chapters/chapter_X.txt` 之间同步正文。
 
 新前端读类接口允许后端不可用时降级到 mock 数据，但页面会标记为“离线预览”。离线预览或断线状态下，保存、导入、清理向量库、创建生成任务、WebDAV 操作等写类入口应禁用或提前提示不可写。
 
@@ -73,10 +73,11 @@ npm run dev
    - 验收：配置有效 LLM 后，从前端创建设定/目录任务，输出目录出现非空目标文件。
 
 2. **章节草稿与定稿闭环**
-   - 目标：让前端创建章节草稿、章节定稿、一致性审校任务时能真实执行，而不是只记录日志。
-   - 后端重点：接入 `outline_X.txt`、`chapter_X.txt`、`global_summary.txt`、`character_state.txt`、`plot_arcs.txt` 的生成和更新流程。
+   - 目标：让前端创建章节草稿、章节定稿任务时能真实执行，而不是只记录日志。
+   - 当前状态：单章草稿和单章定稿已接入同步执行器；一致性审校、批量生成和 `plot_arcs.txt` 自动更新仍待后续 milestone。
+   - 后端重点：`draft` 生成 `chapter_X.txt`，`finalization` 更新 `global_summary.txt`、`character_state.txt` 并沿用旧逻辑尝试更新 `vectorstore/`；同步根部 `chapter_X.txt` 与旧 `chapters/chapter_X.txt`。
    - 前端重点：明确目标章节、文件变更结果、失败原因和重试入口。
-   - 验收：从前端生成第 1 章草稿后出现 `outline_1.txt` 和 `chapter_1.txt`；定稿后摘要、角色状态或剧情要点发生合理更新。
+   - 验收：从前端生成第 1 章草稿后出现非空 `chapter_1.txt`；定稿后摘要或角色状态发生合理更新。
 
 3. **任务持久化与可恢复工作流**
    - 目标：服务重启后仍能查看任务历史、日志、结果和失败点。
@@ -249,21 +250,22 @@ npm install
 进入“生成任务”页：
 
 - 无 API Key 冒烟时，创建“生成小说设定”任务应返回失败任务，并提示 LLM 配置缺少 API Key。
-- 创建“生成章节草稿”任务，当前章节应为 `1`，且 `chapter_1.txt` 已存在。
-- 页面应提示章节类任务将使用 `chapter_1.txt`。
+- 创建“生成章节草稿”任务，当前章节应为 `1`；草稿不要求 `chapter_1.txt` 预先存在。
+- 页面应提示草稿可生成当前章节，定稿和审校需要已有 `chapter_1.txt`。
 - 批量参数可填写起始章节 `1`、结束章节 `1`、目标字数 `1200`、最低字数 `800`，创建批量任务。
 - 查看任务列表和详情日志。
 
 验收标准：
 
-- 无 API Key 时，设定/目录任务状态应为 `failed`，错误说明缺少 API Key。
-- 草稿、定稿、审校和批量任务仍是 `queued` 或等价待接入状态。
+- 无 API Key 时，设定、目录、草稿和定稿任务状态应为 `failed`，错误说明缺少 API Key。
+- 审校和批量任务仍是 `queued` 或等价待接入状态。
 - 详情页不应再把所有任务都描述为“不会调用 LLM 或写入小说文件”；该边界只适用于未接入阶段。
-- 设定/目录任务日志应包含真实执行开始、完成或失败原因。
+- 设定、目录、草稿和定稿任务日志应包含真实执行开始、完成或失败原因。
 - 未接入阶段日志包含“任务已创建，等待执行器接入”或等价信息。
 - 批量任务日志应包含章节范围、目标字数、最低字数和自动扩写设置。
 - 无 API Key 冒烟不应期待 `Novel_setting.txt`、`chapter_1.txt`、`global_summary.txt` 等文件自动变化。
-- 如果删除 `chapter_1.txt` 后创建草稿、定稿或审校任务，页面或后端应提示章节文件不存在。
+- 如果删除 `chapter_1.txt` 后创建草稿任务，页面应允许创建任务，后端应因缺少 API Key 或缺少前置目录等条件返回清晰失败。
+- 如果删除 `chapter_1.txt` 后创建定稿或审校任务，页面或后端应提示章节文件不存在或需要先生成/保存章节正文。
 - 如果批量范围包含不存在的章节，例如只存在 `chapter_1.txt` 时填写 `1-2`，页面或后端应提示缺少 `chapter_2.txt`。
 
 ### 6.1 离线预览验收
@@ -312,7 +314,7 @@ npm install
 
 ## 真实 LLM/Embedding 完整验收
 
-这套验收用于旧 GUI，或新前端已接入真实执行器的阶段。当前新前端可验收“生成小说设定”和“生成章节目录”；章节草稿、定稿、审校、知识库向量化仍按旧 GUI 或后续 milestone 验收。执行前需要有效 LLM 配置；涉及知识库检索时还需要可用 Embedding。
+这套验收用于旧 GUI，或新前端已接入真实执行器的阶段。当前新前端可验收“生成小说设定”“生成章节目录”“生成章节草稿”和“章节定稿”；一致性审校、批量生成、知识库向量化仍按旧 GUI 或后续 milestone 验收。执行前需要有效 LLM 配置；涉及知识库检索时还需要可用 Embedding。
 
 建议参数：
 
@@ -333,6 +335,15 @@ npm install
 6. 执行 Step4 定稿章节，确认 `global_summary.txt`、`character_state.txt`、`plot_arcs.txt` 和 `vectorstore/` 有更新。
 7. 可选执行一致性审校，确认日志输出审校结果或无冲突提示。
 8. 可选导入知识库，确认后续章节生成能参考相关资料。
+
+新前端已接入阶段：
+
+1. 运行 `./scripts/dev.sh`。
+2. 在设置页配置 LLM、Embedding、输出目录和小说参数。
+3. 在生成任务页依次创建“设定”“目录”“草稿”任务。
+4. 草稿完成后，确认输出目录根部 `chapter_1.txt` 非空；兼容目录 `chapters/chapter_1.txt` 也会同步存在。
+5. 在章节编辑页编辑并保存第 1 章。
+6. 回到生成任务页创建“定稿”任务，确认 `global_summary.txt`、`character_state.txt` 有更新；`plot_arcs.txt` 当前不由新前端定稿自动更新。
 
 真实验收标准：
 

@@ -6,9 +6,11 @@ from typing import Any, Literal
 
 from novel_generator.architecture import Novel_architecture_generate
 from novel_generator.blueprint import Chapter_blueprint_generate
+from novel_generator.chapter import generate_chapter_draft
+from novel_generator.finalization import enrich_chapter_text, finalize_chapter
 
 
-GenerationStage = Literal["architecture", "directory"]
+GenerationStage = Literal["architecture", "directory", "draft", "finalization"]
 GenerationStatus = Literal["done", "failed"]
 
 ARCHITECTURE_FILENAME = "Novel_architecture.txt"
@@ -28,13 +30,34 @@ class GenerationExecutionError(Exception):
     """User-facing generation precondition or execution failure."""
 
 
-def run_generation_job(config: dict[str, Any], stage: GenerationStage, output_path: Path) -> GenerationExecutionResult:
+def run_generation_job(
+    config: dict[str, Any],
+    stage: GenerationStage,
+    output_path: Path,
+    *,
+    chapter_number: int | None = None,
+    auto_enrich: bool = False,
+    minimum_words: int | None = None,
+    target_words: int | None = None,
+) -> GenerationExecutionResult:
     log = [f"开始执行真实生成阶段：{stage}"]
     try:
         if stage == "architecture":
             _run_architecture(config, output_path, log)
         elif stage == "directory":
             _run_directory(config, output_path, log)
+        elif stage == "draft":
+            _run_draft(config, output_path, log, chapter_number)
+        elif stage == "finalization":
+            _run_finalization(
+                config,
+                output_path,
+                log,
+                chapter_number,
+                auto_enrich=auto_enrich,
+                minimum_words=minimum_words,
+                target_words=target_words,
+            )
         else:
             raise GenerationExecutionError("该生成阶段尚未接入真实执行器")
     except GenerationExecutionError as exc:
@@ -125,6 +148,113 @@ def _run_directory(config: dict[str, Any], output_path: Path, log: list[str]) ->
     log.append(f"已写入 {DIRECTORY_FILENAME}")
 
 
+def _run_draft(
+    config: dict[str, Any],
+    output_path: Path,
+    log: list[str],
+    chapter_number: int | None,
+) -> None:
+    params = _legacy_params(config)
+    llm_config = _stage_llm_config(config, "prompt_draft_llm", "生成章节草稿")
+    embedding_config = _embedding_config(config)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    novel_number = _chapter_number(chapter_number, params)
+    word_number = _positive_int(params.get("word_number"), "每章字数必须大于 0")
+    _require_non_empty_file(output_path / DIRECTORY_FILENAME, "请先生成章节目录")
+
+    log.append(f"正在生成第 {novel_number} 章草稿")
+    generate_chapter_draft(
+        api_key=str(llm_config.get("api_key") or ""),
+        base_url=str(llm_config.get("base_url") or ""),
+        model_name=str(llm_config.get("model_name") or ""),
+        filepath=str(output_path),
+        novel_number=novel_number,
+        word_number=word_number,
+        temperature=float(llm_config.get("temperature") or 0.7),
+        user_guidance=str(params.get("user_guidance") or ""),
+        characters_involved=str(params.get("characters_involved") or ""),
+        key_items=str(params.get("key_items") or ""),
+        scene_location=str(params.get("scene_location") or ""),
+        time_constraint=str(params.get("time_constraint") or ""),
+        embedding_api_key=str(embedding_config.get("api_key") or ""),
+        embedding_url=str(embedding_config.get("base_url") or ""),
+        embedding_interface_format=str(embedding_config.get("interface_format") or ""),
+        embedding_model_name=str(embedding_config.get("model_name") or ""),
+        embedding_retrieval_k=int(embedding_config.get("retrieval_k") or 4),
+        interface_format=str(llm_config.get("interface_format") or ""),
+        max_tokens=int(llm_config.get("max_tokens") or 2048),
+        timeout=int(llm_config.get("timeout") or 600),
+    )
+
+    legacy_path = _require_non_empty_file(_legacy_chapter_path(output_path, novel_number), "章节草稿生成结果为空")
+    _sync_file(legacy_path, _frontend_chapter_path(output_path, novel_number))
+    log.append(f"已写入 chapter_{novel_number}.txt，并同步 legacy chapters/ 目录")
+
+
+def _run_finalization(
+    config: dict[str, Any],
+    output_path: Path,
+    log: list[str],
+    chapter_number: int | None,
+    *,
+    auto_enrich: bool,
+    minimum_words: int | None,
+    target_words: int | None,
+) -> None:
+    params = _legacy_params(config)
+    llm_config = _stage_llm_config(config, "final_chapter_llm", "润色章节定稿")
+    embedding_config = _embedding_config(config)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    novel_number = _chapter_number(chapter_number, params)
+    configured_words = _positive_int(params.get("word_number"), "每章字数必须大于 0")
+    word_number = target_words if target_words and target_words > 0 else configured_words
+    frontend_path = _require_non_empty_file(
+        _frontend_chapter_path(output_path, novel_number),
+        "请先生成或保存章节正文",
+    )
+    legacy_path = _legacy_chapter_path(output_path, novel_number)
+    _sync_file(frontend_path, legacy_path)
+
+    chapter_text = legacy_path.read_text(encoding="utf-8")
+    if auto_enrich and minimum_words and _count_words(chapter_text) < minimum_words:
+        log.append(f"第 {novel_number} 章低于最低字数，正在扩写")
+        chapter_text = enrich_chapter_text(
+            chapter_text=chapter_text,
+            word_number=word_number,
+            api_key=str(llm_config.get("api_key") or ""),
+            base_url=str(llm_config.get("base_url") or ""),
+            model_name=str(llm_config.get("model_name") or ""),
+            temperature=float(llm_config.get("temperature") or 0.7),
+            interface_format=str(llm_config.get("interface_format") or ""),
+            max_tokens=int(llm_config.get("max_tokens") or 2048),
+            timeout=int(llm_config.get("timeout") or 600),
+        )
+        legacy_path.write_text(chapter_text, encoding="utf-8")
+        _sync_file(legacy_path, frontend_path)
+
+    log.append(f"正在定稿第 {novel_number} 章")
+    finalize_chapter(
+        novel_number=novel_number,
+        word_number=word_number,
+        api_key=str(llm_config.get("api_key") or ""),
+        base_url=str(llm_config.get("base_url") or ""),
+        model_name=str(llm_config.get("model_name") or ""),
+        temperature=float(llm_config.get("temperature") or 0.7),
+        filepath=str(output_path),
+        embedding_api_key=str(embedding_config.get("api_key") or ""),
+        embedding_url=str(embedding_config.get("base_url") or ""),
+        embedding_interface_format=str(embedding_config.get("interface_format") or ""),
+        embedding_model_name=str(embedding_config.get("model_name") or ""),
+        interface_format=str(llm_config.get("interface_format") or ""),
+        max_tokens=int(llm_config.get("max_tokens") or 2048),
+        timeout=int(llm_config.get("timeout") or 600),
+    )
+    _sync_file(_require_non_empty_file(legacy_path, "定稿章节正文为空"), frontend_path)
+    log.append(f"第 {novel_number} 章定稿完成，已同步章节正文、全局摘要和角色状态")
+
+
 def _legacy_params(config: dict[str, Any]) -> dict[str, Any]:
     params = config.get("other_params") or {}
     if not isinstance(params, dict):
@@ -156,6 +286,19 @@ def _stage_llm_config(config: dict[str, Any], choose_key: str, stage_label: str)
     return llm_config
 
 
+def _embedding_config(config: dict[str, Any]) -> dict[str, Any]:
+    embedding_configs = config.get("embedding_configs") or {}
+    if not isinstance(embedding_configs, dict) or not embedding_configs:
+        return {}
+
+    selected_name = str(config.get("last_embedding_interface_format") or "").strip()
+    if selected_name and isinstance(embedding_configs.get(selected_name), dict):
+        return embedding_configs[selected_name]
+
+    first_config = next((item for item in embedding_configs.values() if isinstance(item, dict)), None)
+    return first_config or {}
+
+
 def _required_text(params: dict[str, Any], key: str, message: str) -> str:
     value = str(params.get(key) or "").strip()
     if not value:
@@ -177,3 +320,25 @@ def _require_non_empty_file(path: Path, message: str) -> Path:
     if not path.exists() or not path.read_text(encoding="utf-8").strip():
         raise GenerationExecutionError(message)
     return path
+
+
+def _chapter_number(chapter_number: int | None, params: dict[str, Any]) -> int:
+    value = chapter_number if chapter_number is not None else params.get("chapter_num")
+    return _positive_int(value, "章节号必须大于 0")
+
+
+def _frontend_chapter_path(output_path: Path, chapter_number: int) -> Path:
+    return output_path / f"chapter_{chapter_number}.txt"
+
+
+def _legacy_chapter_path(output_path: Path, chapter_number: int) -> Path:
+    return output_path / "chapters" / f"chapter_{chapter_number}.txt"
+
+
+def _sync_file(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def _count_words(content: str) -> int:
+    return len("".join(content.split()))

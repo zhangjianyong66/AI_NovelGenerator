@@ -56,7 +56,7 @@
 
 ### 1. Scope / Trigger
 
-- Trigger: `POST /api/generation-jobs` 的 `architecture` 和 `directory` 阶段已接入本地同步真实执行器。
+- Trigger: `POST /api/generation-jobs` 的 `architecture`、`directory`、`draft` 和 `finalization` 阶段已接入本地同步真实执行器。
 - Scope: FastAPI handler 创建任务记录，`app/services/generation_executor.py` 负责 legacy 配置解析、旧生成函数调用、文件非空校验和用户可见错误。
 
 ### 2. Signatures
@@ -65,10 +65,11 @@
 - Request model: `GenerationJobCreateRequest`
   - `projectId: str = "current"`
   - `stage: str`
-  - chapter/batch 字段仅供未接入真实执行器的章节类任务预检使用。
+  - `chapterNumber` 供 `draft`、`finalization`、`consistency` 使用；`draft` 可在章节文件不存在时创建正文，`finalization` 要求章节正文已存在。
+  - `startChapter`、`endChapter`、`targetWords`、`minimumWords`、`autoEnrich` 当前主要供 `batch` 壳任务记录；`finalization` 可消费 `targetWords`、`minimumWords`、`autoEnrich` 做可选扩写。
 - Response model: `GenerationJob`
   - `status` 可为 `queued`、`running`、`done`、`failed`。
-  - 同步执行返回时，`architecture` / `directory` 通常应为 `done` 或 `failed`，不应长期停在 `running`。
+  - 同步执行返回时，`architecture` / `directory` / `draft` / `finalization` 通常应为 `done` 或 `failed`，不应长期停在 `running`。
 
 ### 3. Contracts
 
@@ -80,21 +81,36 @@
   - 使用 `choose_configs.chapter_outline_llm` 找到 `llm_configs` 条目。
   - 要求 `Novel_architecture.txt` 非空；如果只存在 `Novel_setting.txt`，服务层可同步回 `Novel_architecture.txt` 兼容旧函数。
   - 调用 `Chapter_blueprint_generate(...)`，成功后要求 `Novel_directory.txt` 非空。
-- `draft`、`finalization`、`consistency`、`batch`：当前仍是任务记录边界，不得被文案或测试误标为真实执行。
+- `draft`：
+  - 使用 `choose_configs.prompt_draft_llm` 找到 `llm_configs` 条目。
+  - 要求 `Novel_directory.txt` 非空，但不要求根部 `chapter_X.txt` 预先存在。
+  - 调用 `generate_chapter_draft(...)`；旧函数写入 `chapters/chapter_X.txt` 后，服务层必须同步到前端读取的根部 `chapter_X.txt`。
+- `finalization`：
+  - 使用 `choose_configs.final_chapter_llm` 找到 `llm_configs` 条目。
+  - 以根部 `chapter_X.txt` 为前端权威输入，执行前同步到旧函数读取的 `chapters/chapter_X.txt`。
+  - 调用 `finalize_chapter(...)`，更新 `global_summary.txt`、`character_state.txt`，并沿用旧逻辑尝试更新 `vectorstore/`。
+  - 执行后再次同步 `chapters/chapter_X.txt` 到根部 `chapter_X.txt`。
+- `consistency`、`batch`：当前仍是任务记录边界，不得被文案或测试误标为真实执行。
 
 ### 4. Validation & Error Matrix
 
 - Unsupported `stage` -> HTTP `422`，`detail="不支持的生成阶段"`。
-- 章节类任务缺章节文件 -> HTTP `400`，`detail="章节文件不存在"`。
-- `architecture` / `directory` 缺阶段模型选择 -> 返回 `GenerationJob(status="failed")`，`error` 为中文原因。
+- `consistency` 缺章节文件 -> HTTP `400`，`detail="章节文件不存在"`。
+- `batch` 缺章节文件 -> HTTP `400`，`detail="章节文件不存在：<chapter>"`。
+- `architecture` / `directory` / `draft` / `finalization` 缺阶段模型选择 -> 返回 `GenerationJob(status="failed")`，`error` 为中文原因。
 - LLM 配置不存在、缺 API Key、缺模型名、缺接口格式 -> 返回 `failed` 任务，不伪装成功。
 - 旧生成函数返回空文件或未写目标文件 -> 返回 `failed` 任务，说明目标生成结果为空。
+- `draft` 缺 `Novel_directory.txt` -> 返回 `failed` 任务，`error="请先生成章节目录"`。
+- `finalization` 缺根部章节正文 -> 返回 `failed` 任务，`error="请先生成或保存章节正文"`。
 
 ### 5. Good/Base/Bad Cases
 
 - Good: 有效 LLM 配置 + 项目参数完整，`architecture` 返回 `done`，`Novel_architecture.txt` 和 `Novel_setting.txt` 均非空。
 - Base: 无 API Key，`architecture` 返回 `failed` 任务，前端能在详情里展示错误。
 - Bad: `directory` 在缺少设定文件时静默返回 `done` 或写入空目录文件；这是错误实现。
+- Good: `draft` 成功后，`chapters/chapter_1.txt` 和根部 `chapter_1.txt` 均非空，`GET /api/projects/current/chapters` 能读到章节正文。
+- Base: `finalization` 成功后，`global_summary.txt` 和 `character_state.txt` 更新；`plot_arcs.txt` 当前不属于该执行器合同。
+- Bad: `draft` 继续要求根部 `chapter_X.txt` 已存在，导致前端无法从目录推进到章节草稿。
 
 ### 6. Tests Required
 
@@ -104,7 +120,9 @@
   - 成功任务的 `status == "done"`、`progress == 100`。
   - 输出文件真实落盘且非空。
   - 缺 API Key / 缺设定文件返回 `failed` 任务和中文错误。
-  - 未接入阶段仍保留 `queued` 或待接入日志。
+  - `draft` 成功时断言双路径章节文件同步，且章节列表可读。
+  - `finalization` 成功时断言摘要和角色状态文件更新。
+  - `consistency` / `batch` 等未接入阶段仍保留 `queued` 或待接入日志。
 
 ### 7. Wrong vs Correct
 
