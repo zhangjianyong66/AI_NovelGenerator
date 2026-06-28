@@ -10,7 +10,7 @@
     <StatusMessage
       v-if="job.status === 'queued'"
       type="info"
-      message="任务已记录在本地后端内存队列，等待执行器接入；当前不会自动调用 LLM 或写入小说文件。"
+      message="任务已记录在本地后端内存队列，正在等待执行或后续执行器接入。"
     />
     <StatusMessage v-if="job.error" type="error" :message="job.error" />
     <LongTextEditor

@@ -11,6 +11,7 @@
 - 使用本地 Ollama Embedding 时，需要先启动 Ollama 并拉取模型，例如 `ollama serve` 和 `ollama pull nomic-embed-text`。
 - 切换不同 Embedding 模型后，建议清空 `vectorstore/`，避免旧向量库影响检索。
 - 项目功能地图与前端验收剧本放在 `docs/feature-map-and-acceptance.md`；不熟悉原项目或验收新前端时先阅读该文档，确认旧 GUI、新前端和本地 API 的职责边界。
+- 新前端要从“可编辑工作台”变成“可真实创作工具”时，优先级记录在 `docs/feature-map-and-acceptance.md` 的“新前端真实可用开发顺序”：先做真实生成执行器最小闭环，再做章节草稿/定稿闭环、任务持久化与可恢复工作流、知识库真实向量化、项目管理和章节生命周期补齐；不要优先扩大纯视觉 UI 重构。
 - UI 字体与控件缩放集中定义在 `ui/styles.py`；新增或调整 CustomTkinter 界面时优先使用 `UI_FONT`、`EDITOR_FONT`、`SMALL_FONT`、`BOLD_FONT`、`TITLE_FONT` 和 `WIDGET_SCALING`，避免重新散落硬编码字体元组。该模块会按系统选择中文字体，Linux/Ubuntu 优先使用 `Noto Sans CJK SC` 等中文字体，Windows 优先使用 `Microsoft YaHei`。
 - `frontend/` 是与现有 Python GUI 并行演进的 Tauri 2 + Vue 3 + TypeScript + Vite 前端工程；不会替代 `python main.py`。
 - 前端依赖通过 `cd frontend && npm install` 安装；常用命令包括 `npm run dev`、`npm run typecheck`、`npm run build` 和 `npm run tauri:dev`。
@@ -29,7 +30,8 @@
 - 模型设置接口读写 `config.json` 的 `llm_configs`、`embedding_configs`、`choose_configs`、`proxy_setting`、`last_interface_format` 和 `last_embedding_interface_format`；响应时 `apiKey` 置空并用 `hasApiKey` 表示是否已有密钥，保存时空 `apiKey` 会保留同名旧密钥。
 - 核心项目文件接口为 `GET /api/project-files` 和 `PUT /api/project-files/{file_id}`，固定支持 `novelSetting` → `Novel_setting.txt`、`novelDirectory` → `Novel_directory.txt`、`characterState` → `character_state.txt`、`globalSummary` → `global_summary.txt`；文件目录来自 `config.json` 的 `other_params.filepath`。
 - 章节接口为 `GET /api/projects/{project_id}/chapters` 和 `PUT /api/chapters/{chapter_number}`；当前按 `other_params.filepath` 下的 `chapter_<数字>.txt` 读取和保存，并尝试从 `Novel_directory.txt` 补章节标题和简述。
-- 生成任务接口为 `POST /api/generation-jobs`、`GET /api/projects/{project_id}/jobs`、`GET /api/generation-jobs/{job_id}`；当前支持 `architecture`、`directory`、`draft`、`finalization`、`consistency` 和 `batch`，以 in-memory job registry 返回 `queued` 状态和日志，尚未接入真实 LLM 执行器。`batch` 请求支持 `startChapter`、`endChapter`、`targetWords`、`minimumWords`、`autoEnrich`。
+- 生成任务接口为 `POST /api/generation-jobs`、`GET /api/projects/{project_id}/jobs`、`GET /api/generation-jobs/{job_id}`；当前支持 `architecture`、`directory`、`draft`、`finalization`、`consistency` 和 `batch`，以 in-memory job registry 保存任务状态和日志。`batch` 请求支持 `startChapter`、`endChapter`、`targetWords`、`minimumWords`、`autoEnrich`。
+- 生成任务的 `architecture` 和 `directory` 阶段已通过 `app/services/generation_executor.py` 接入同步真实执行器：`architecture` 调用旧 `Novel_architecture_generate(...)` 后同步 `Novel_architecture.txt` 到前端读取的 `Novel_setting.txt`，`directory` 调用旧 `Chapter_blueprint_generate(...)` 并写入 `Novel_directory.txt`；草稿、定稿、审校和批量仍是待后续接入的任务记录边界。
 - 知识工具接口为 `GET /api/knowledge`、`POST /api/knowledge/import`、`POST /api/knowledge/clear-vectorstore`、`GET /api/knowledge/plot-arcs`；当前导入会把指定本地文件复制到当前输出目录的 `vectorstore/imported/`，清理会删除 `vectorstore/`，剧情要点读取 `plot_arcs.txt`；知识列表会汇总 `vectorstore/imported/` 下的导入文件和 `角色库/<分类>/<角色名>.txt` 角色文件。
 - 角色库接口为 `GET /api/roles`、`GET/PUT /api/roles/{category}/{role_name}`、`POST /api/roles/import`；当前兼容输出目录下 `角色库/<分类>/<角色名>.txt`，前端可将选中角色名写入项目配置的 `characters_involved`。
 - WebDAV 接口为 `GET/PUT /api/webdav-config`、`POST /api/webdav/test`、`POST /api/webdav/backup`、`POST /api/webdav/restore`；配置读写 `config.json` 的 `webdav_config`，响应时密码置空并用 `hasPassword` 表示是否已有密码，备份/恢复使用远程 `AI_Novel_Generator/config.json`，恢复前会在本地 `backup/` 下创建 `config_*_bak.json`。

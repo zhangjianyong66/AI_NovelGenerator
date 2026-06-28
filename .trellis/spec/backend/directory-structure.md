@@ -17,6 +17,7 @@
 ├── novel_generator/                # 设定、目录、章节、定稿、知识库、向量库核心流程
 ├── ui/                             # CustomTkinter GUI 页面、样式和回调
 ├── app/api/server.py               # 本地 FastAPI API 边界
+├── app/services/                   # 本地 API 应用服务边界，封装 legacy 生成函数调用
 ├── frontend/                       # Tauri 2 + Vue 3 + TypeScript + Vite 前端
 ├── tests/                          # pytest 测试，当前重点覆盖 API 与解析器
 ├── docs/superpowers/plans/         # 架构重构计划和 milestone 子计划
@@ -29,6 +30,7 @@
 - `ui/` 负责界面布局、用户输入、按钮回调和 UI 状态。新增或调整控件时复用 `ui/styles.py` 中的 `UI_FONT`、`EDITOR_FONT`、`SMALL_FONT`、`BOLD_FONT`、`TITLE_FONT`、`WIDGET_SCALING`。
 - `novel_generator/` 放生成流程和核心文件/向量库操作。GUI 不应复制这些流程逻辑；需要复用时通过函数或后续 service 层调用。
 - `app/api/server.py` 是当前前端真实接入的最小本地 API 边界。API 层应继续用 Pydantic model 定义请求/响应，用 helper 函数封装 legacy `config.json` 与输出目录格式转换。
+- `app/services/` 放本地 API 的应用服务边界。新增真实执行能力时优先在这里封装 legacy 配置解析、前置条件校验和 `novel_generator/` 调用，避免把 LLM 参数映射和文件兼容逻辑直接塞进 FastAPI handler。
 - 根目录 `config_manager.py` 仍服务旧 GUI；`app/api/server.py` 内部有独立 `_load_config` / `_save_config` 以支持测试隔离。改配置格式时必须同时确认旧 GUI 和 API 的兼容性。
 
 参考文件：
@@ -38,6 +40,7 @@
 - `ui/styles.py`
 - `novel_generator/chapter.py`
 - `app/api/server.py`
+- `app/services/generation_executor.py`
 - `config_manager.py`
 
 ## 前端结构

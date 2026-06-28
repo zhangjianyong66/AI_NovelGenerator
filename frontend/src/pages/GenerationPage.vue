@@ -3,7 +3,8 @@
     <PageHeader title="生成任务" subtitle="创建后端生成任务，查看状态、日志和错误。" />
 
     <StatusMessage v-if="isLoading" type="loading" message="正在同步生成任务状态。" />
-    <StatusMessage type="warning" message="当前接口只创建排队任务，尚未接入真实 LLM 执行器，不会直接生成或修改小说文件。" />
+    <StatusMessage type="info" message="设定和目录阶段已接入本地真实执行器，需要有效 LLM 配置，完成后会写入项目文件。" />
+    <StatusMessage type="warning" message="草稿、定稿、审校和批量阶段仍处于后续接入范围，当前只创建任务记录。" />
     <StatusMessage v-if="!canWriteToBackend" type="warning" :message="writeUnavailableMessage" />
     <StatusMessage type="error" :message="errorMessage" />
     <StatusMessage :type="chapterTargetStatus" :message="chapterTargetMessage" />

@@ -6,7 +6,7 @@ import re
 import shutil
 import tempfile
 from uuid import uuid4
-from typing import Any
+from typing import Any, cast
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from app.services.generation_executor import GenerationStage as ExecutableGenerationStage, run_generation_job
 from chapter_directory_parser import get_chapter_info_from_blueprint
 
 
@@ -233,6 +234,7 @@ GENERATION_STAGE_TITLES = {
 }
 
 CHAPTER_GENERATION_STAGES = {"draft", "finalization", "consistency"}
+EXECUTABLE_GENERATION_STAGES = {"architecture", "directory"}
 
 
 def _default_config() -> dict[str, Any]:
@@ -788,10 +790,11 @@ def create_app(config_file: str | Path | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail="不支持的生成阶段")
 
         output_path = _active_output_path(config_path)
+        config = _load_config(config_path)
         extra_log: list[str] = []
         if request.stage in CHAPTER_GENERATION_STAGES:
             chapter_number = request.chapterNumber or int(
-                (_load_config(config_path).get("other_params") or {}).get("chapter_num") or 0
+                (config.get("other_params") or {}).get("chapter_num") or 0
             )
             if chapter_number <= 0 or not _chapter_file_path(output_path, chapter_number).exists():
                 raise HTTPException(status_code=400, detail="章节文件不存在")
@@ -830,9 +833,21 @@ def create_app(config_file: str | Path | None = None) -> FastAPI:
                 f"已接收 {GENERATION_STAGE_TITLES[request.stage]} 请求",
                 f"输出路径：{output_path}",
                 *extra_log,
-                "任务已创建，等待执行器接入",
             ],
         )
+
+        if request.stage in EXECUTABLE_GENERATION_STAGES:
+            job.status = "running"
+            job.progress = 5
+            job.log.append("任务已开始执行真实生成器")
+            result = run_generation_job(config, cast(ExecutableGenerationStage, request.stage), output_path)
+            job.status = result.status
+            job.progress = result.progress
+            job.log.extend(result.log)
+            job.error = result.error
+        else:
+            job.log.append("任务已创建，等待执行器接入")
+
         generation_jobs[job.id] = job
         return job
 

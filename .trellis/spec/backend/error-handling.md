@@ -52,6 +52,85 @@
 - 批量生成章节范围无效：返回 `400`；缺失章节文件时指出第一个缺失章节。
 - WebDAV URL 为空：返回 `400`；真实网络错误不伪装成成功。
 
+## Scenario: Generation Job Synchronous Executor
+
+### 1. Scope / Trigger
+
+- Trigger: `POST /api/generation-jobs` 的 `architecture` 和 `directory` 阶段已接入本地同步真实执行器。
+- Scope: FastAPI handler 创建任务记录，`app/services/generation_executor.py` 负责 legacy 配置解析、旧生成函数调用、文件非空校验和用户可见错误。
+
+### 2. Signatures
+
+- API: `POST /api/generation-jobs`
+- Request model: `GenerationJobCreateRequest`
+  - `projectId: str = "current"`
+  - `stage: str`
+  - chapter/batch 字段仅供未接入真实执行器的章节类任务预检使用。
+- Response model: `GenerationJob`
+  - `status` 可为 `queued`、`running`、`done`、`failed`。
+  - 同步执行返回时，`architecture` / `directory` 通常应为 `done` 或 `failed`，不应长期停在 `running`。
+
+### 3. Contracts
+
+- `architecture`：
+  - 使用 `choose_configs.architecture_llm` 找到 `llm_configs` 条目。
+  - 调用 `Novel_architecture_generate(...)`。
+  - 成功后要求 `Novel_architecture.txt` 非空，并同步写入前端读取的 `Novel_setting.txt`。
+- `directory`：
+  - 使用 `choose_configs.chapter_outline_llm` 找到 `llm_configs` 条目。
+  - 要求 `Novel_architecture.txt` 非空；如果只存在 `Novel_setting.txt`，服务层可同步回 `Novel_architecture.txt` 兼容旧函数。
+  - 调用 `Chapter_blueprint_generate(...)`，成功后要求 `Novel_directory.txt` 非空。
+- `draft`、`finalization`、`consistency`、`batch`：当前仍是任务记录边界，不得被文案或测试误标为真实执行。
+
+### 4. Validation & Error Matrix
+
+- Unsupported `stage` -> HTTP `422`，`detail="不支持的生成阶段"`。
+- 章节类任务缺章节文件 -> HTTP `400`，`detail="章节文件不存在"`。
+- `architecture` / `directory` 缺阶段模型选择 -> 返回 `GenerationJob(status="failed")`，`error` 为中文原因。
+- LLM 配置不存在、缺 API Key、缺模型名、缺接口格式 -> 返回 `failed` 任务，不伪装成功。
+- 旧生成函数返回空文件或未写目标文件 -> 返回 `failed` 任务，说明目标生成结果为空。
+
+### 5. Good/Base/Bad Cases
+
+- Good: 有效 LLM 配置 + 项目参数完整，`architecture` 返回 `done`，`Novel_architecture.txt` 和 `Novel_setting.txt` 均非空。
+- Base: 无 API Key，`architecture` 返回 `failed` 任务，前端能在详情里展示错误。
+- Bad: `directory` 在缺少设定文件时静默返回 `done` 或写入空目录文件；这是错误实现。
+
+### 6. Tests Required
+
+- API 测试用 `create_app(config_file=tmp_path / "config.json")` 隔离真实配置。
+- 真实 LLM 调用必须通过 monkeypatch fake 掉 legacy 生成函数。
+- 断言点：
+  - 成功任务的 `status == "done"`、`progress == 100`。
+  - 输出文件真实落盘且非空。
+  - 缺 API Key / 缺设定文件返回 `failed` 任务和中文错误。
+  - 未接入阶段仍保留 `queued` 或待接入日志。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+@app.post("/api/generation-jobs")
+def create_generation_job(request):
+    Novel_architecture_generate(...)
+    return {"status": "done"}
+```
+
+问题：API handler 直接拥有 LLM 参数映射和旧函数调用，难以测试，也会和后续工作流服务边界冲突。
+
+#### Correct
+
+```python
+result = run_generation_job(config, stage, output_path)
+job.status = result.status
+job.progress = result.progress
+job.log.extend(result.log)
+job.error = result.error
+```
+
+正确做法：API 只更新任务响应，服务层拥有执行器合同、文件兼容和错误归一化。
+
 ## 代码例子
 
 API 数据边界 helper 直接抛出 `HTTPException`，示例来自 `app/api/server.py`：
