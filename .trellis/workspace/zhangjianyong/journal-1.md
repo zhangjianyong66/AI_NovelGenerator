@@ -391,3 +391,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: 前端生成任务持久化
+
+**Date**: 2026-06-28
+**Task**: 前端生成任务持久化
+**Branch**: `main`
+
+### Summary
+
+为新前端生成任务接入本地 SQLite 状态库，保存任务历史、日志、错误和请求参数；后端重启后仍可列表和详情读取，并同步更新前端提示、验收文档、AGENTS 与 Trellis 后端规范。验证通过 pytest、frontend typecheck 和 build。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5bf6a96` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

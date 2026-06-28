@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
+- **Total Sessions**: 12
 - **Last Active**: 2026-06-28
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~393 | Active |
+| `journal-1.md` | ~426 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 12 | 2026-06-28 | 前端生成任务持久化 | `5bf6a96` | `main` |
 | 11 | 2026-06-28 | 前端章节草稿定稿真实执行器 | `fb0709a` | `main` |
 | 10 | 2026-06-28 | 前端设定目录真实生成执行器 | `d5a23fe` | `main` |
 | 9 | 2026-06-28 | 生成任务真实边界和日志体验 | `9be8ef7` | `main` |
