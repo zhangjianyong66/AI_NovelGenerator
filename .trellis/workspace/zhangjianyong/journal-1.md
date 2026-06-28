@@ -526,3 +526,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: 接入前端一致性审校真实执行
+
+**Date**: 2026-06-28
+**Task**: 接入前端一致性审校真实执行
+**Branch**: `main`
+
+### Summary
+
+将新前端 generation consistency 阶段接入同步真实执行器，复用旧 check_consistency 读取设定、角色状态、摘要、剧情要点和章节正文，并把审校结果写入持久化任务日志；同步更新前端文案、验收文档、AGENTS 和 Trellis 规格。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `47f4bf7` | (see git log) |
+| `a2b23af` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
