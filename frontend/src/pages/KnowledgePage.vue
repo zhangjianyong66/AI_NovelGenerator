@@ -1,6 +1,6 @@
 <template>
   <section class="page">
-    <PageHeader title="知识库" subtitle="导入知识文件、查看剧情要点，并维护当前项目角色库。" />
+    <PageHeader title="知识库" subtitle="导入并向量化知识文件、查看剧情要点，并维护当前项目角色库。" />
 
     <StatusMessage v-if="isBusy" type="loading" message="正在处理知识库操作。" />
     <StatusMessage v-if="!canWriteToBackend" type="warning" :message="writeUnavailableMessage" />
@@ -9,7 +9,7 @@
 
     <Tabs v-model="activeTab" :tabs="tabs">
       <div v-if="activeTab === 'files'" class="tab-stack">
-        <FormSection title="知识文件" description="导入资料到当前输出目录的向量库，并查看已知知识文件。">
+        <FormSection title="知识文件" description="使用当前 Embedding 配置写入向量库，并保留导入文件记录。">
           <template #actions>
             <button
               class="primary-button"

@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from app.services.generation_executor import GenerationStage as ExecutableGenerationStage, run_generation_job
 from app.services.generation_job_store import GenerationJobStore
 from chapter_directory_parser import get_chapter_info_from_blueprint, parse_chapter_blueprint
+from novel_generator.knowledge import KnowledgeImportResult, import_knowledge_file as import_knowledge_to_vectorstore
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -180,6 +181,13 @@ class KnowledgeItem(BaseModel):
     updatedAt: str
 
 
+class EmbeddingImportConfig(BaseModel):
+    apiKey: str
+    baseUrl: str
+    modelName: str
+    interfaceFormat: str
+
+
 class PlotArcsResponse(BaseModel):
     exists: bool
     content: str
@@ -305,6 +313,44 @@ def _active_output_path(config_path: Path) -> Path:
     return Path(filepath)
 
 
+def _embedding_import_config(config_path: Path) -> EmbeddingImportConfig:
+    config = _load_config(config_path)
+    embedding_configs = config.get("embedding_configs") or {}
+    selected_name = str(config.get("last_embedding_interface_format") or next(iter(embedding_configs), "")).strip()
+    if not selected_name or selected_name not in embedding_configs:
+        raise HTTPException(status_code=400, detail="请先配置 Embedding 模型")
+
+    selected_config = embedding_configs.get(selected_name) or {}
+    interface_format = str(selected_config.get("interface_format") or selected_name).strip()
+    model_name = str(selected_config.get("model_name") or "").strip()
+    api_key = str(selected_config.get("api_key") or "").strip()
+    base_url = str(selected_config.get("base_url") or "").strip()
+
+    if not interface_format:
+        raise HTTPException(status_code=400, detail="Embedding 配置缺少接口格式")
+    if not model_name:
+        raise HTTPException(status_code=400, detail="Embedding 配置缺少模型名称")
+    if interface_format.lower() not in {"ollama", "ml studio", "lm studio"} and not api_key:
+        raise HTTPException(status_code=400, detail="Embedding 配置缺少 API Key")
+
+    return EmbeddingImportConfig(
+        apiKey=api_key,
+        baseUrl=base_url,
+        modelName=model_name,
+        interfaceFormat=interface_format,
+    )
+
+
+def _vectorstore_has_chroma_data(output_path: Path) -> bool:
+    vectorstore_path = output_path / "vectorstore"
+    if not vectorstore_path.exists():
+        return False
+    return any(
+        path.is_file() and path.relative_to(vectorstore_path).parts[:1] != ("imported",)
+        for path in vectorstore_path.rglob("*")
+    )
+
+
 def _project_summary(config_path: Path) -> ProjectSummary:
     config = _load_config(config_path)
     params = config.get("other_params") or {}
@@ -426,15 +472,19 @@ def _role_summary(category: str, file_path: Path) -> RoleSummary:
 def _knowledge_items(output_path: Path) -> list[KnowledgeItem]:
     items: list[KnowledgeItem] = []
     import_dir = output_path / "vectorstore" / "imported"
+    imported_files_are_vectorized = _vectorstore_has_chroma_data(output_path)
     if import_dir.exists():
         for file_path in sorted(path for path in import_dir.iterdir() if path.is_file()):
+            tags = ["导入文件"]
+            if imported_files_are_vectorized:
+                tags.append("已向量化")
             items.append(
                 KnowledgeItem(
                     id=f"file/{file_path.name}",
                     type="file",
                     name=file_path.name,
                     description=str(file_path.relative_to(output_path)),
-                    tags=["导入文件"],
+                    tags=tags,
                     updatedAt="",
                 )
             )
@@ -933,10 +983,25 @@ def create_app(
         if not source_path.is_file():
             raise HTTPException(status_code=400, detail="知识文件不存在")
 
+        embedding_config = _embedding_import_config(config_path)
+        import_result = import_knowledge_to_vectorstore(
+            embedding_api_key=embedding_config.apiKey,
+            embedding_url=embedding_config.baseUrl,
+            embedding_interface_format=embedding_config.interfaceFormat,
+            embedding_model_name=embedding_config.modelName,
+            file_path=str(source_path),
+            filepath=str(output_path),
+        )
+        if not import_result.success:
+            raise HTTPException(status_code=400, detail=import_result.message)
+
         import_dir = output_path / "vectorstore" / "imported"
         import_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, import_dir / source_path.name)
-        return OperationResult(success=True, message=f"已导入 {source_path.name}")
+        return OperationResult(
+            success=True,
+            message=f"已导入 {source_path.name} 并写入向量库，共 {import_result.segment_count} 个片段",
+        )
 
     @app.post("/api/knowledge/clear-vectorstore", response_model=OperationResult)
     def clear_vectorstore() -> OperationResult:
