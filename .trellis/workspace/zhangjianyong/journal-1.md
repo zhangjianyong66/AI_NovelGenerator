@@ -292,3 +292,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: 生成任务真实边界和日志体验
+
+**Date**: 2026-06-28
+**Task**: 生成任务真实边界和日志体验
+**Branch**: `main`
+
+### Summary
+
+完成生成任务页 Milestone 2：前置章节与批量参数校验，透传后端错误 detail，强化 queued 任务详情和日志解释，更新验收文档与 frontend spec，并通过完整测试、typecheck、build 和浏览器/API 冒烟。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9be8ef7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

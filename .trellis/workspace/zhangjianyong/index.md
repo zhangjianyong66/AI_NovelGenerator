@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
+- **Total Sessions**: 9
 - **Last Active**: 2026-06-28
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~294 | Active |
+| `journal-1.md` | ~327 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-06-28 | 生成任务真实边界和日志体验 | `9be8ef7` | `main` |
 | 8 | 2026-06-28 | 完成 Trellis 入门任务 | - | `main` |
 | 7 | 2026-06-28 | 补齐 Trellis 后端规范 | `7ce5730` | `main` |
 | 6 | 2026-06-28 | 前端真实后端闭环首阶段 | `03eb88e` | `main` |
