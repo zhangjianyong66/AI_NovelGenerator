@@ -2,7 +2,9 @@
 import unittest
 
 from chapter_directory_parser import (
+    extract_explicit_chapter_number,
     get_chapter_info_from_blueprint,
+    get_chapter_outline_context,
     parse_chapter_blueprint,
 )
 
@@ -82,6 +84,28 @@ Chapter summary: The protagonist decodes the archive and changes allegiance."""
         self.assertEqual(9, chapter["chapter_number"])
         self.assertEqual("第9章", chapter["chapter_title"])
         self.assertEqual("", chapter["chapter_summary"])
+
+    def test_extracts_single_markdown_chapter_outline_context(self):
+        blueprint = """# 第1章 - 逆生晶簇
+**本章简述**：陈凡发现逆生晶簇。
+
+# 第2章 - 骸骨低语
+**本章定位**：事件/核心揭示
+**本章简述**：陈凡挖出玄霄遗骸。
+
+# 第3章 - 三方相遇
+**本章简述**：铁骨引爆矿洞制造混乱。"""
+
+        context = get_chapter_outline_context(blueprint, 2)
+
+        self.assertIn("# 第2章 - 骸骨低语", context)
+        self.assertIn("陈凡挖出玄霄遗骸", context)
+        self.assertNotIn("# 第3章 - 三方相遇", context)
+
+    def test_extracts_explicit_chapter_number_from_generated_heading(self):
+        self.assertEqual(3, extract_explicit_chapter_number("# 第3章 三方相遇\n正文"))
+        self.assertEqual(4, extract_explicit_chapter_number("## Chapter 4 - The Glass Archive\nBody"))
+        self.assertIsNone(extract_explicit_chapter_number("矿道在身后崩塌，碎石如雨般砸落。"))
 
 
 if __name__ == "__main__":

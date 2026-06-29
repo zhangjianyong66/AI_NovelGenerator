@@ -137,6 +137,45 @@ def parse_chapter_blueprint(blueprint_text: str):
     return results
 
 
+def get_chapter_outline_context(blueprint_text: str, target_chapter_number: int) -> str:
+    """
+    从章节蓝图原文中截取指定章节的目录片段。
+
+    保留原文格式，支持 Markdown 标题、列表前缀和中英文 Chapter 标题。
+    """
+    selected_lines = []
+    capturing = False
+
+    for raw_line in (blueprint_text or "").splitlines():
+        header = _parse_chapter_header(raw_line)
+        if header:
+            chapter_number, _ = header
+            if capturing and chapter_number != target_chapter_number:
+                break
+            capturing = chapter_number == target_chapter_number
+
+        if capturing:
+            selected_lines.append(raw_line)
+
+    return "\n".join(selected_lines).strip()
+
+
+def extract_explicit_chapter_number(text: str):
+    """
+    从生成正文第一条非空行中识别显式章节号。
+
+    没有章节标题时返回 None，避免对无标题正文做误判。
+    """
+    for raw_line in (text or "").splitlines():
+        if not raw_line.strip():
+            continue
+        header = _parse_chapter_header(raw_line)
+        if header:
+            return header[0]
+        return None
+    return None
+
+
 def get_chapter_info_from_blueprint(blueprint_text: str, target_chapter_number: int):
     """
     在已经加载好的章节蓝图文本中，找到对应章号的结构化信息，返回一个 dict。

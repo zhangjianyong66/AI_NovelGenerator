@@ -7,6 +7,7 @@ import os
 import logging
 import tempfile
 import re
+from chapter_directory_parser import extract_explicit_chapter_number, get_chapter_outline_context
 from llm_adapters import create_llm_adapter
 from embedding_adapters import create_embedding_adapter
 import prompt_definitions
@@ -44,11 +45,15 @@ def _last_paragraph(text: str, max_chars: int = 600) -> str:
 
 
 def _chapter_outline_context(directory_text: str, novel_number: int) -> str:
-    if not directory_text.strip():
-        return ""
-    pattern = re.compile(rf"第\s*{novel_number}\s*章[^\n]*(?:\n(?!第\s*\d+\s*章).*)*", re.MULTILINE)
-    match = pattern.search(directory_text)
-    return match.group(0).strip() if match else ""
+    return get_chapter_outline_context(directory_text, novel_number)
+
+
+def _validate_chapter_number_before_write(chapter_text: str, novel_number: int):
+    explicit_chapter_number = extract_explicit_chapter_number(chapter_text)
+    if explicit_chapter_number is not None and explicit_chapter_number != novel_number:
+        raise ValueError(
+            f"定稿返回章节号不匹配：期望第{novel_number}章，实际第{explicit_chapter_number}章，已拒绝覆盖章节文件。"
+        )
 
 def finalize_chapter(
     novel_number: int,
@@ -104,6 +109,7 @@ def finalize_chapter(
     polished_chapter_text = invoke_with_cleaning(llm_adapter, prompt_polish)
     if polished_chapter_text.strip():
         chapter_text = polished_chapter_text.strip()
+        _validate_chapter_number_before_write(chapter_text, novel_number)
         _write_text_atomic(chapter_file, chapter_text)
 
     prompt_summary = prompt_definitions.summary_prompt.format(
