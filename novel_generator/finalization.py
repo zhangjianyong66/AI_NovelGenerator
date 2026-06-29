@@ -56,6 +56,22 @@ def _validate_chapter_number_before_write(chapter_text: str, novel_number: int):
             f"定稿返回章节号不匹配：期望第{novel_number}章，实际第{explicit_chapter_number}章，已拒绝覆盖章节文件。"
         )
 
+
+def _remove_current_chapter_heading(chapter_text: str, novel_number: int) -> str:
+    lines = chapter_text.splitlines()
+    for index, line in enumerate(lines):
+        if not line.strip():
+            continue
+        explicit_chapter_number = extract_explicit_chapter_number(line)
+        if explicit_chapter_number == novel_number:
+            remaining_lines = lines[index + 1:]
+            while remaining_lines and not remaining_lines[0].strip():
+                remaining_lines.pop(0)
+            return "\n".join(remaining_lines).strip()
+        return chapter_text.strip()
+    return chapter_text.strip()
+
+
 def finalize_chapter(
     novel_number: int,
     word_number: int,
@@ -111,6 +127,7 @@ def finalize_chapter(
     if polished_chapter_text.strip():
         chapter_text = polished_chapter_text.strip()
         _validate_chapter_number_before_write(chapter_text, novel_number)
+        chapter_text = _remove_current_chapter_heading(chapter_text, novel_number)
         _write_text_atomic(chapter_file, chapter_text)
 
     prompt_summary = prompt_definitions.summary_prompt.format(

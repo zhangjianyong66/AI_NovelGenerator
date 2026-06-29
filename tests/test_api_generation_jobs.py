@@ -251,6 +251,50 @@ def test_finalize_chapter_polishes_and_rewrites_chapter_with_context(tmp_path, m
     assert (output_path / "character_state.txt").read_text(encoding="utf-8") == "更新后的角色状态"
 
 
+def test_finalize_chapter_removes_generated_current_chapter_heading(tmp_path, monkeypatch):
+    output_path = tmp_path / "novel"
+    chapters_path = output_path / "chapters"
+    chapters_path.mkdir(parents=True)
+    chapter_path = chapters_path / "chapter_2.txt"
+    chapter_path.write_text("# 第2章 骸骨低语\n原始正文", encoding="utf-8")
+    (output_path / "Novel_directory.txt").write_text(
+        "# 第2章 - 骸骨低语\n**本章简述**：陈凡挖出玄霄遗骸。",
+        encoding="utf-8",
+    )
+
+    class FakeAdapter:
+        def invoke(self, prompt):
+            if "定稿润色" in prompt:
+                return "# 第2章 骸骨低语\n\n定稿后的正文第一段。\n\n定稿后的正文第二段。"
+            if "前文摘要" in prompt:
+                return "更新后的全局摘要"
+            if "角色状态" in prompt:
+                return "更新后的角色状态"
+            return ""
+
+    monkeypatch.setattr("novel_generator.finalization.create_llm_adapter", lambda **kwargs: FakeAdapter())
+    monkeypatch.setattr("novel_generator.finalization.create_embedding_adapter", lambda *args, **kwargs: object())
+    monkeypatch.setattr("novel_generator.finalization.update_vector_store", lambda **kwargs: None)
+
+    finalize_chapter(
+        novel_number=2,
+        word_number=1200,
+        api_key="test-key",
+        base_url="https://example.invalid/v1",
+        model_name="test-model",
+        temperature=0.7,
+        filepath=str(output_path),
+        embedding_api_key="embedding-key",
+        embedding_url="https://example.invalid/embedding",
+        embedding_interface_format="OpenAI",
+        embedding_model_name="embedding-model",
+        interface_format="OpenAI",
+        max_tokens=4096,
+    )
+
+    assert chapter_path.read_text(encoding="utf-8") == "定稿后的正文第一段。\n\n定稿后的正文第二段。"
+
+
 def test_finalize_chapter_rejects_mismatched_generated_chapter_heading(tmp_path, monkeypatch):
     output_path = tmp_path / "novel"
     chapters_path = output_path / "chapters"
