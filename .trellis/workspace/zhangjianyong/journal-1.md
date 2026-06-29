@@ -593,3 +593,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 18: 批量生成与定稿润色回写
+
+**Date**: 2026-06-29
+**Task**: 批量生成与定稿润色回写
+**Branch**: `main`
+
+### Summary
+
+完成批量草稿、批量定稿、批量审校闭环；修复定稿仅更新摘要状态、不回写润色正文的问题；补充上下文承接润色提示词、回归测试、项目说明和规格文档。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `943edf2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
