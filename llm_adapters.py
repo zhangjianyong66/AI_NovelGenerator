@@ -12,6 +12,10 @@ import httpx
 from openai import OpenAI
 import requests
 
+OPENAI_COMPATIBLE_DEFAULT_HEADERS = {
+    "User-Agent": "AI-NovelGenerator/1.0 (local desktop app; OpenAI-compatible)"
+}
+
 
 def check_base_url(url: str) -> str:
     """
@@ -51,6 +55,7 @@ def _async_http_client_without_system_proxy() -> httpx.AsyncClient:
 def _create_chat_openai(**kwargs) -> ChatOpenAI:
     return ChatOpenAI(
         **kwargs,
+        default_headers=OPENAI_COMPATIBLE_DEFAULT_HEADERS,
         openai_proxy=None,
         http_client=_http_client_without_system_proxy(),
         http_async_client=_async_http_client_without_system_proxy(),
@@ -60,6 +65,7 @@ def _create_chat_openai(**kwargs) -> ChatOpenAI:
 def _create_azure_chat_openai(**kwargs) -> AzureChatOpenAI:
     return AzureChatOpenAI(
         **kwargs,
+        default_headers=OPENAI_COMPATIBLE_DEFAULT_HEADERS,
         openai_proxy=None,
         http_client=_http_client_without_system_proxy(),
         http_async_client=_async_http_client_without_system_proxy(),
@@ -69,6 +75,7 @@ def _create_azure_chat_openai(**kwargs) -> AzureChatOpenAI:
 def _create_openai_client(**kwargs) -> OpenAI:
     return OpenAI(
         **kwargs,
+        default_headers=OPENAI_COMPATIBLE_DEFAULT_HEADERS,
         http_client=_http_client_without_system_proxy(),
     )
 
