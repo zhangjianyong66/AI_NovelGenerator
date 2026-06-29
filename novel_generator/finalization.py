@@ -6,6 +6,7 @@
 import os
 import logging
 import tempfile
+import re
 from llm_adapters import create_llm_adapter
 from embedding_adapters import create_embedding_adapter
 import prompt_definitions
@@ -33,6 +34,21 @@ def _write_text_atomic(path: str, content: str):
         if os.path.exists(temp_path):
             os.unlink(temp_path)
         raise
+
+
+def _last_paragraph(text: str, max_chars: int = 600) -> str:
+    paragraphs = [item.strip() for item in re.split(r"\n\s*\n", text.strip()) if item.strip()]
+    if not paragraphs:
+        return text.strip()[-max_chars:]
+    return paragraphs[-1][-max_chars:]
+
+
+def _chapter_outline_context(directory_text: str, novel_number: int) -> str:
+    if not directory_text.strip():
+        return ""
+    pattern = re.compile(rf"第\s*{novel_number}\s*章[^\n]*(?:\n(?!第\s*\d+\s*章).*)*", re.MULTILINE)
+    match = pattern.search(directory_text)
+    return match.group(0).strip() if match else ""
 
 def finalize_chapter(
     novel_number: int,
@@ -75,6 +91,20 @@ def finalize_chapter(
         max_tokens=max_tokens,
         timeout=timeout
     )
+
+    previous_chapter_text = read_file(os.path.join(chapters_dir, f"chapter_{novel_number - 1}.txt")) if novel_number > 1 else ""
+    directory_text = read_file(os.path.join(filepath, "Novel_directory.txt"))
+    prompt_polish = prompt_definitions.finalize_polish_prompt.format(
+        previous_chapter_excerpt=_last_paragraph(previous_chapter_text),
+        current_chapter_outline=_chapter_outline_context(directory_text, novel_number),
+        next_chapter_outline=_chapter_outline_context(directory_text, novel_number + 1),
+        word_number=word_number,
+        chapter_text=chapter_text,
+    )
+    polished_chapter_text = invoke_with_cleaning(llm_adapter, prompt_polish)
+    if polished_chapter_text.strip():
+        chapter_text = polished_chapter_text.strip()
+        _write_text_atomic(chapter_file, chapter_text)
 
     prompt_summary = prompt_definitions.summary_prompt.format(
         chapter_text=chapter_text,

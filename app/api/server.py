@@ -255,10 +255,25 @@ GENERATION_STAGE_TITLES = {
     "finalization": "润色章节定稿",
     "consistency": "一致性审校",
     "batch": "批量定稿章节",
+    "batchDraft": "批量生成草稿",
+    "batchFinalization": "批量定稿章节",
+    "batchConsistency": "批量一致性审校",
 }
 
 CHAPTER_GENERATION_STAGES = {"draft", "finalization", "consistency"}
-EXECUTABLE_GENERATION_STAGES = {"architecture", "directory", "draft", "finalization", "consistency", "batch"}
+EXECUTABLE_GENERATION_STAGES = {
+    "architecture",
+    "directory",
+    "draft",
+    "finalization",
+    "consistency",
+    "batch",
+    "batchDraft",
+    "batchFinalization",
+    "batchConsistency",
+}
+BATCH_GENERATION_STAGES = {"batch", "batchDraft", "batchFinalization", "batchConsistency"}
+BATCH_EXISTING_CHAPTER_STAGES = {"batch", "batchFinalization", "batchConsistency"}
 
 
 def _default_config() -> dict[str, Any]:
@@ -678,9 +693,14 @@ def _model_settings_from_legacy(config: dict[str, Any]) -> ModelSettings:
     choose_configs = config.get("choose_configs") or {}
     proxy_setting = config.get("proxy_setting") or {}
     first_llm_name = next(iter(llm_configs), "")
+    selected_llm_name = _existing_llm_name(
+        str(choose_configs.get("prompt_draft_llm") or ""),
+        llm_configs,
+        first_llm_name,
+    )
 
     return ModelSettings(
-        selectedLlmConfig=str(choose_configs.get("prompt_draft_llm") or first_llm_name),
+        selectedLlmConfig=selected_llm_name,
         selectedEmbeddingConfig=str(
             config.get("last_embedding_interface_format") or next(iter(embedding_configs), "")
         ),
@@ -716,13 +736,41 @@ def _model_settings_from_legacy(config: dict[str, Any]) -> ModelSettings:
             enabled=bool(proxy_setting.get("enabled")),
         ),
         stageModelSelection=StageModelSelection(
-            promptDraft=str(choose_configs.get("prompt_draft_llm") or ""),
-            chapterOutline=str(choose_configs.get("chapter_outline_llm") or ""),
-            architecture=str(choose_configs.get("architecture_llm") or ""),
-            finalChapter=str(choose_configs.get("final_chapter_llm") or ""),
-            consistencyReview=str(choose_configs.get("consistency_review_llm") or ""),
+            promptDraft=_existing_llm_name(
+                str(choose_configs.get("prompt_draft_llm") or ""),
+                llm_configs,
+                selected_llm_name,
+            ),
+            chapterOutline=_existing_llm_name(
+                str(choose_configs.get("chapter_outline_llm") or ""),
+                llm_configs,
+                selected_llm_name,
+            ),
+            architecture=_existing_llm_name(
+                str(choose_configs.get("architecture_llm") or ""),
+                llm_configs,
+                selected_llm_name,
+            ),
+            finalChapter=_existing_llm_name(
+                str(choose_configs.get("final_chapter_llm") or ""),
+                llm_configs,
+                selected_llm_name,
+            ),
+            consistencyReview=_existing_llm_name(
+                str(choose_configs.get("consistency_review_llm") or ""),
+                llm_configs,
+                selected_llm_name,
+            ),
         ),
     )
+
+
+def _existing_llm_name(name: str, llm_configs: dict[str, Any], fallback: str = "") -> str:
+    if name and isinstance(llm_configs.get(name), dict):
+        return name
+    if fallback and isinstance(llm_configs.get(fallback), dict):
+        return fallback
+    return next((key for key, value in llm_configs.items() if isinstance(value, dict)), "")
 
 
 def _merge_model_settings(config: dict[str, Any], settings: ModelSettings) -> dict[str, Any]:
@@ -757,17 +805,42 @@ def _merge_model_settings(config: dict[str, Any], settings: ModelSettings) -> di
         }
         for item in settings.embeddingConfigs
     }
+    fallback_llm_name = _existing_llm_name(
+        settings.selectedLlmConfig,
+        config["llm_configs"],
+        next(iter(config["llm_configs"]), ""),
+    )
     config["proxy_setting"] = {
         "proxy_url": settings.proxySetting.proxyUrl,
         "proxy_port": settings.proxySetting.proxyPort,
         "enabled": settings.proxySetting.enabled,
     }
     config["choose_configs"] = {
-        "prompt_draft_llm": settings.stageModelSelection.promptDraft,
-        "chapter_outline_llm": settings.stageModelSelection.chapterOutline,
-        "architecture_llm": settings.stageModelSelection.architecture,
-        "final_chapter_llm": settings.stageModelSelection.finalChapter,
-        "consistency_review_llm": settings.stageModelSelection.consistencyReview,
+        "prompt_draft_llm": _existing_llm_name(
+            settings.stageModelSelection.promptDraft,
+            config["llm_configs"],
+            fallback_llm_name,
+        ),
+        "chapter_outline_llm": _existing_llm_name(
+            settings.stageModelSelection.chapterOutline,
+            config["llm_configs"],
+            fallback_llm_name,
+        ),
+        "architecture_llm": _existing_llm_name(
+            settings.stageModelSelection.architecture,
+            config["llm_configs"],
+            fallback_llm_name,
+        ),
+        "final_chapter_llm": _existing_llm_name(
+            settings.stageModelSelection.finalChapter,
+            config["llm_configs"],
+            fallback_llm_name,
+        ),
+        "consistency_review_llm": _existing_llm_name(
+            settings.stageModelSelection.consistencyReview,
+            config["llm_configs"],
+            fallback_llm_name,
+        ),
     }
     return config
 
@@ -1091,18 +1164,19 @@ def create_app(
             )
             if chapter_number <= 0 or not _chapter_file_path(output_path, chapter_number).exists():
                 raise HTTPException(status_code=400, detail="章节文件不存在")
-        if request.stage == "batch":
+        if request.stage in BATCH_GENERATION_STAGES:
             start_chapter = request.startChapter or 0
             end_chapter = request.endChapter or 0
             if start_chapter <= 0 or end_chapter < start_chapter:
                 raise HTTPException(status_code=400, detail="批量生成章节范围无效")
-            missing_chapters = [
-                chapter_number
-                for chapter_number in range(start_chapter, end_chapter + 1)
-                if not _chapter_file_path(output_path, chapter_number).exists()
-            ]
-            if missing_chapters:
-                raise HTTPException(status_code=400, detail=f"章节文件不存在：{missing_chapters[0]}")
+            if request.stage in BATCH_EXISTING_CHAPTER_STAGES:
+                missing_chapters = [
+                    chapter_number
+                    for chapter_number in range(start_chapter, end_chapter + 1)
+                    if not _chapter_file_path(output_path, chapter_number).exists()
+                ]
+                if missing_chapters:
+                    raise HTTPException(status_code=400, detail=f"章节文件不存在：{missing_chapters[0]}")
             extra_log.extend(
                 [
                     f"章节范围：{start_chapter}-{end_chapter}",

@@ -3,7 +3,7 @@
     <PageHeader title="生成任务" subtitle="创建后端生成任务，查看状态、日志和错误。" />
 
     <StatusMessage v-if="isLoading" type="loading" message="正在同步生成任务状态。" />
-    <StatusMessage type="info" message="设定、目录、草稿、定稿、审校和批量定稿已接入本地真实执行器，需要有效 LLM 配置，完成后会写入项目文件或任务日志。" />
+    <StatusMessage type="info" message="设定、目录、草稿、定稿、审校、批量草稿、批量定稿和批量审校已接入本地真实执行器，需要有效 LLM 配置，完成后会写入项目文件或任务日志。" />
     <StatusMessage type="info" message="任务历史保存在本地状态库，后端重启后仍可查看日志、结果和错误。" />
     <StatusMessage v-if="!canWriteToBackend" type="warning" :message="writeUnavailableMessage" />
     <StatusMessage type="error" :message="errorMessage" />
@@ -13,7 +13,7 @@
       <GenerationActions :disabled="isLoading || !canWriteToBackend" @create="createJob" @create-batch="createBatchJob" />
     </FormSection>
 
-    <FormSection title="批量定稿参数" description="批量定稿会逐章处理已有章节文件，并使用下列章节范围、目标字数、最低字数和自动扩写设置。">
+    <FormSection title="批量章节参数" description="批量草稿会生成缺失章节并跳过已有章节；批量定稿和批量审校会逐章处理已有章节文件。">
       <StatusMessage :type="batchValidationStatus" :message="batchValidationMessage" />
       <div class="batch-grid">
         <TextField
@@ -80,7 +80,8 @@ type StatusMessageType = 'success' | 'error' | 'warning' | 'loading' | 'empty' |
 
 const chapterStages = new Set<GenerationStage>(['draft', 'finalization', 'consistency'])
 const existingChapterStages = new Set<GenerationStage>(['finalization', 'consistency'])
-const refreshChapterStages = new Set<GenerationStage>(['draft', 'finalization'])
+const refreshChapterStages = new Set<GenerationStage>(['draft', 'finalization', 'batchDraft', 'batchFinalization'])
+const existingBatchStages = new Set<GenerationStage>(['batch', 'batchFinalization', 'batchConsistency'])
 const projectsStore = useProjectsStore()
 const generationStore = useGenerationStore()
 const { jobs, isLoading } = storeToRefs(generationStore)
@@ -161,8 +162,15 @@ const missingBatchChapters = computed(() => {
   }
   return missing
 })
-const batchValidationMessage = computed(() => validateBatchForm() ?? `批量任务将检查第 ${batchForm.value.startChapter}-${batchForm.value.endChapter} 章。`)
-const batchValidationStatus = computed<StatusMessageType>(() => (validateBatchForm() ? 'warning' : 'info'))
+const batchValidationMessage = computed(() => {
+  const baseValidation = validateBatchBaseForm()
+  if (baseValidation) return baseValidation
+  if (missingBatchChapters.value.length > 0) {
+    return `当前输出目录缺少章节文件：${formatMissingBatchChapters()}。批量草稿可生成缺失章节；批量定稿和批量审校需要这些文件已存在。`
+  }
+  return `批量任务将处理第 ${batchForm.value.startChapter}-${batchForm.value.endChapter} 章。`
+})
+const batchValidationStatus = computed<StatusMessageType>(() => (validateBatchBaseForm() || missingBatchChapters.value.length > 0 ? 'warning' : 'info'))
 
 const normalizeGenerationError = (error: unknown, fallbackMessage: string) => {
   if (typeof error === 'object' && error !== null) {
@@ -193,7 +201,9 @@ const validateExistingChapterStage = () => {
   return ''
 }
 
-const validateBatchForm = () => {
+const formatMissingBatchChapters = () => missingBatchChapters.value.map((chapterNumber) => `chapter_${chapterNumber}.txt`).join('、')
+
+const validateBatchBaseForm = () => {
   const startChapter = Number(batchForm.value.startChapter)
   const endChapter = Number(batchForm.value.endChapter)
   const targetWords = Number(batchForm.value.targetWords)
@@ -201,8 +211,14 @@ const validateBatchForm = () => {
   if (!Number.isInteger(startChapter) || startChapter <= 0) return '起始章节必须是大于 0 的整数。'
   if (!Number.isInteger(endChapter) || endChapter < startChapter) return '结束章节不能小于起始章节。'
   if (targetWords < 0 || minimumWords < 0) return '目标字数和最低字数不能为负数。'
-  if (missingBatchChapters.value.length > 0) {
-    return `当前输出目录缺少章节文件：${missingBatchChapters.value.map((chapterNumber) => `chapter_${chapterNumber}.txt`).join('、')}。`
+  return ''
+}
+
+const validateBatchForm = (stage: GenerationStage) => {
+  const baseValidation = validateBatchBaseForm()
+  if (baseValidation) return baseValidation
+  if (existingBatchStages.has(stage) && missingBatchChapters.value.length > 0) {
+    return `当前输出目录缺少章节文件：${formatMissingBatchChapters()}。`
   }
   return ''
 }
@@ -237,13 +253,13 @@ const createJob = async (stage: GenerationStage) => {
   }
 }
 
-const createBatchJob = async () => {
+const createBatchJob = async (stage: GenerationStage) => {
   errorMessage.value = ''
   if (!canWriteToBackend.value) {
     errorMessage.value = writeUnavailableMessage.value
     return
   }
-  const validationMessage = validateBatchForm()
+  const validationMessage = validateBatchForm(stage)
   if (validationMessage) {
     errorMessage.value = validationMessage
     return
@@ -251,9 +267,12 @@ const createBatchJob = async () => {
   try {
     await generationStore.createJob({
       projectId: projectsStore.activeProjectId,
-      stage: 'batch',
+      stage,
       ...batchForm.value,
     })
+    if (refreshChapterStages.has(stage)) {
+      await loadGenerationContext()
+    }
     syncBridgeStatus()
     selectedJobId.value = jobs.value[0]?.id ?? selectedJobId.value
   } catch (error) {

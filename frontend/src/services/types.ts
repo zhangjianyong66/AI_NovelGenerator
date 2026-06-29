@@ -40,7 +40,16 @@ export interface Chapter {
 }
 
 export type GenerationJobStatus = 'queued' | 'running' | 'paused' | 'done' | 'failed'
-export type GenerationStage = 'architecture' | 'directory' | 'draft' | 'finalization' | 'batch' | 'consistency'
+export type GenerationStage =
+  | 'architecture'
+  | 'directory'
+  | 'draft'
+  | 'finalization'
+  | 'batch'
+  | 'batchDraft'
+  | 'batchFinalization'
+  | 'batchConsistency'
+  | 'consistency'
 
 export interface GenerationJob {
   id: string

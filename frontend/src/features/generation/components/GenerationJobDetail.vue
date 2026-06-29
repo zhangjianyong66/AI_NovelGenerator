@@ -50,6 +50,9 @@ const stageLabel = (stage: GenerationStage) => {
     draft: '草稿',
     finalization: '定稿',
     batch: '批量',
+    batchDraft: '批量草稿',
+    batchFinalization: '批量定稿',
+    batchConsistency: '批量审校',
     consistency: '审校',
   }
   return labels[stage]

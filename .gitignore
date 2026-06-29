@@ -10,6 +10,7 @@ __pycache__/
 /markdown
 /vectorstore
 /output
+/output_bak
 /example
 config.json
 config_test.json

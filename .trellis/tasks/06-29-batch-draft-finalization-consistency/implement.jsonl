@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/service-bridge-real-backend.md", "reason": "生成任务页必须继续通过 serviceBridge 边界创建真实后端任务，写操作不能落到 mock fallback。"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "定义生成任务同步执行器、批量定稿、审校和中文错误合同，本任务会扩展批量阶段语义。"}
+{"file": ".trellis/spec/backend/persistence-and-config.md", "reason": "定义输出目录章节文件生命周期和 chapter_X.txt 权威来源，批量草稿/定稿/审校需要遵守。"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "定义 API、前端和测试质量门槛，包括临时 config 隔离和前端 typecheck/build。"}

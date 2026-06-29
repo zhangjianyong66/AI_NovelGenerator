@@ -73,6 +73,30 @@ def test_model_settings_endpoint_loads_configs_without_exposing_secrets(tmp_path
     assert data["stageModelSelection"]["architecture"] == "Default"
 
 
+def test_model_settings_endpoint_replaces_missing_stage_selection_with_existing_config(tmp_path):
+    config_file = tmp_path / "config.json"
+    write_model_config(config_file)
+    config = json.loads(config_file.read_text(encoding="utf-8"))
+    config["llm_configs"]["Backup"] = {
+        "api_key": "backup-secret",
+        "base_url": "https://backup.example.com/v1",
+        "model_name": "backup-model",
+        "temperature": 0.8,
+        "max_tokens": 4096,
+        "timeout": 600,
+        "interface_format": "OpenAI",
+    }
+    config["choose_configs"]["architecture_llm"] = "Deleted Gemini"
+    config_file.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+    client = TestClient(create_app(config_file=str(config_file)))
+
+    response = client.get("/api/model-settings")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["stageModelSelection"]["architecture"] == "Default"
+
+
 def test_model_settings_endpoint_saves_legacy_config_and_preserves_masked_secret(tmp_path):
     config_file = tmp_path / "config.json"
     write_model_config(config_file)
@@ -141,6 +165,10 @@ def test_model_settings_endpoint_saves_legacy_config_and_preserves_masked_secret
     assert saved["embedding_configs"]["Ollama"]["retrieval_k"] == 6
     assert saved["proxy_setting"]["proxy_port"] == "7891"
     assert saved["choose_configs"]["prompt_draft_llm"] == "Backup"
+    assert saved["choose_configs"]["chapter_outline_llm"] == "Default"
+    assert saved["choose_configs"]["architecture_llm"] == "Default"
+    assert saved["choose_configs"]["final_chapter_llm"] == "Backup"
+    assert saved["choose_configs"]["consistency_review_llm"] == "Default"
 
 
 def test_llm_config_test_reports_missing_secret_without_network_call(tmp_path):

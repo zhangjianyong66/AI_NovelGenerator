@@ -10,9 +10,15 @@
       <Play :size="16" />
       {{ action.label }}
     </AppButton>
-    <AppButton variant="primary" :disabled="disabled" @click="$emit('createBatch')">
+    <AppButton
+      v-for="action in batchActions"
+      :key="action.stage"
+      variant="primary"
+      :disabled="disabled"
+      @click="$emit('createBatch', action.stage)"
+    >
       <Play :size="16" />
-      批量
+      {{ action.label }}
     </AppButton>
   </Toolbar>
 </template>
@@ -29,7 +35,7 @@ defineProps<{
 
 defineEmits<{
   create: [stage: GenerationStage]
-  createBatch: []
+  createBatch: [stage: GenerationStage]
 }>()
 
 const actions: Array<{ label: string; stage: GenerationStage }> = [
@@ -39,5 +45,10 @@ const actions: Array<{ label: string; stage: GenerationStage }> = [
   { label: '定稿', stage: 'finalization' },
   { label: '审校', stage: 'consistency' },
 ]
-</script>
 
+const batchActions: Array<{ label: string; stage: GenerationStage }> = [
+  { label: '批量草稿', stage: 'batchDraft' },
+  { label: '批量定稿', stage: 'batchFinalization' },
+  { label: '批量审校', stage: 'batchConsistency' },
+]
+</script>

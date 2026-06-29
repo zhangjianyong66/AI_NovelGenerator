@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.api.server import create_app
+from novel_generator.finalization import finalize_chapter
 
 
 def write_config(config_file, output_path):
@@ -103,6 +104,60 @@ def fake_check_consistency(**kwargs):
     assert kwargs["api_key"] == "test-key"
     assert kwargs["model_name"] == "test-model"
     return "无明显冲突"
+
+
+def test_finalize_chapter_polishes_and_rewrites_chapter_with_context(tmp_path, monkeypatch):
+    output_path = tmp_path / "novel"
+    chapters_path = output_path / "chapters"
+    chapters_path.mkdir(parents=True)
+    (chapters_path / "chapter_1.txt").write_text("前章最后一段：门外响起潮声。", encoding="utf-8")
+    (chapters_path / "chapter_2.txt").write_text("草稿原文：林澈推门进入码头。", encoding="utf-8")
+    (output_path / "Novel_directory.txt").write_text(
+        "第2章：码头密谈\n章节简述：林澈在码头见到线人。\n第3章：雾钟\n章节简述：雾钟敲响后危机升级。",
+        encoding="utf-8",
+    )
+    captured_prompts = []
+
+    class FakeAdapter:
+        def invoke(self, prompt):
+            captured_prompts.append(prompt)
+            if "定稿润色" in prompt:
+                return "润色后正文：林澈推门进入码头，潮声承接了门外的等待。"
+            if "前文摘要" in prompt:
+                return "更新后的全局摘要"
+            if "角色状态" in prompt:
+                return "更新后的角色状态"
+            return ""
+
+    monkeypatch.setattr("novel_generator.finalization.create_llm_adapter", lambda **kwargs: FakeAdapter())
+    monkeypatch.setattr("novel_generator.finalization.create_embedding_adapter", lambda *args, **kwargs: object())
+    monkeypatch.setattr("novel_generator.finalization.update_vector_store", lambda **kwargs: None)
+
+    finalize_chapter(
+        novel_number=2,
+        word_number=1200,
+        api_key="test-key",
+        base_url="https://example.invalid/v1",
+        model_name="test-model",
+        temperature=0.7,
+        filepath=str(output_path),
+        embedding_api_key="embedding-key",
+        embedding_url="https://example.invalid/embedding",
+        embedding_interface_format="OpenAI",
+        embedding_model_name="embedding-model",
+        interface_format="OpenAI",
+        max_tokens=4096,
+    )
+
+    polished_prompt = captured_prompts[0]
+    assert (chapters_path / "chapter_2.txt").read_text(encoding="utf-8") == (
+        "润色后正文：林澈推门进入码头，潮声承接了门外的等待。"
+    )
+    assert "前章最后一段：门外响起潮声。" in polished_prompt
+    assert "草稿原文：林澈推门进入码头。" in polished_prompt
+    assert "第3章：雾钟" in polished_prompt
+    assert (output_path / "global_summary.txt").read_text(encoding="utf-8") == "更新后的全局摘要"
+    assert (output_path / "character_state.txt").read_text(encoding="utf-8") == "更新后的角色状态"
 
 
 def test_generation_job_endpoint_creates_lists_and_reads_job(tmp_path, monkeypatch):

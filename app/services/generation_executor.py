@@ -11,7 +11,17 @@ from novel_generator.finalization import enrich_chapter_text, finalize_chapter
 from consistency_checker import check_consistency
 
 
-GenerationStage = Literal["architecture", "directory", "draft", "finalization", "consistency", "batch"]
+GenerationStage = Literal[
+    "architecture",
+    "directory",
+    "draft",
+    "finalization",
+    "consistency",
+    "batch",
+    "batchDraft",
+    "batchFinalization",
+    "batchConsistency",
+]
 GenerationStatus = Literal["done", "failed"]
 
 ARCHITECTURE_FILENAME = "Novel_architecture.txt"
@@ -63,7 +73,15 @@ def run_generation_job(
             )
         elif stage == "consistency":
             _run_consistency(config, output_path, log, chapter_number)
-        elif stage == "batch":
+        elif stage == "batchDraft":
+            return _run_batch_draft(
+                config,
+                output_path,
+                log,
+                start_chapter=start_chapter,
+                end_chapter=end_chapter,
+            )
+        elif stage in {"batch", "batchFinalization"}:
             return _run_batch_finalization(
                 config,
                 output_path,
@@ -73,6 +91,14 @@ def run_generation_job(
                 auto_enrich=auto_enrich,
                 minimum_words=minimum_words,
                 target_words=target_words,
+            )
+        elif stage == "batchConsistency":
+            return _run_batch_consistency(
+                config,
+                output_path,
+                log,
+                start_chapter=start_chapter,
+                end_chapter=end_chapter,
             )
         else:
             raise GenerationExecutionError("该生成阶段尚未接入真实执行器")
@@ -271,6 +297,67 @@ def _run_finalization(
     log.append(f"第 {novel_number} 章定稿完成，已同步章节正文、全局摘要和角色状态")
 
 
+def _batch_range(start_chapter: int | None, end_chapter: int | None) -> tuple[int, int]:
+    start = _positive_int(start_chapter, "批量生成章节范围无效")
+    end = _positive_int(end_chapter, "批量生成章节范围无效")
+    if end < start:
+        raise GenerationExecutionError("批量生成章节范围无效")
+    return start, end
+
+
+def _run_batch_draft(
+    config: dict[str, Any],
+    output_path: Path,
+    log: list[str],
+    *,
+    start_chapter: int | None,
+    end_chapter: int | None,
+) -> GenerationExecutionResult:
+    start, end = _batch_range(start_chapter, end_chapter)
+
+    succeeded: list[int] = []
+    skipped: list[int] = []
+    failed: list[tuple[int, str]] = []
+    log.append(f"开始批量生成草稿第 {start}-{end} 章")
+    for novel_number in range(start, end + 1):
+        if _frontend_chapter_path(output_path, novel_number).exists():
+            skipped.append(novel_number)
+            log.append(f"第 {novel_number} 章已有正文，跳过草稿生成")
+            continue
+        log.append(f"开始生成第 {novel_number} 章草稿")
+        try:
+            _run_draft(config, output_path, log, novel_number)
+        except GenerationExecutionError as exc:
+            message = str(exc)
+            failed.append((novel_number, message))
+            log.append(f"第 {novel_number} 章草稿失败：{message}")
+        except Exception as exc:
+            message = f"生成执行失败：{exc}"
+            failed.append((novel_number, message))
+            log.append(f"第 {novel_number} 章草稿失败：{message}")
+        else:
+            succeeded.append(novel_number)
+            log.append(f"第 {novel_number} 章草稿成功")
+
+    log.append(f"批量草稿完成：成功 {len(succeeded)} 章，跳过 {len(skipped)} 章，失败 {len(failed)} 章")
+    if failed:
+        success_label = _format_chapter_numbers(succeeded) or "无"
+        failed_label = _format_chapter_numbers([chapter_number for chapter_number, _ in failed])
+        error = f"批量草稿部分失败：成功章节 {success_label}；失败章节 {failed_label}"
+        return GenerationExecutionResult(
+            status="failed",
+            progress=100,
+            log=log,
+            error=error,
+        )
+
+    return GenerationExecutionResult(
+        status="done",
+        progress=100,
+        log=[*log, "真实生成执行完成"],
+    )
+
+
 def _run_batch_finalization(
     config: dict[str, Any],
     output_path: Path,
@@ -282,10 +369,7 @@ def _run_batch_finalization(
     minimum_words: int | None,
     target_words: int | None,
 ) -> GenerationExecutionResult:
-    start = _positive_int(start_chapter, "批量生成章节范围无效")
-    end = _positive_int(end_chapter, "批量生成章节范围无效")
-    if end < start:
-        raise GenerationExecutionError("批量生成章节范围无效")
+    start, end = _batch_range(start_chapter, end_chapter)
 
     succeeded: list[int] = []
     failed: list[tuple[int, str]] = []
@@ -319,6 +403,54 @@ def _run_batch_finalization(
         success_label = _format_chapter_numbers(succeeded) or "无"
         failed_label = _format_chapter_numbers([chapter_number for chapter_number, _ in failed])
         error = f"批量定稿部分失败：成功章节 {success_label}；失败章节 {failed_label}"
+        return GenerationExecutionResult(
+            status="failed",
+            progress=100,
+            log=log,
+            error=error,
+        )
+
+    return GenerationExecutionResult(
+        status="done",
+        progress=100,
+        log=[*log, "真实生成执行完成"],
+    )
+
+
+def _run_batch_consistency(
+    config: dict[str, Any],
+    output_path: Path,
+    log: list[str],
+    *,
+    start_chapter: int | None,
+    end_chapter: int | None,
+) -> GenerationExecutionResult:
+    start, end = _batch_range(start_chapter, end_chapter)
+
+    succeeded: list[int] = []
+    failed: list[tuple[int, str]] = []
+    log.append(f"开始批量审校第 {start}-{end} 章")
+    for novel_number in range(start, end + 1):
+        log.append(f"开始审校第 {novel_number} 章")
+        try:
+            _run_consistency(config, output_path, log, novel_number)
+        except GenerationExecutionError as exc:
+            message = str(exc)
+            failed.append((novel_number, message))
+            log.append(f"第 {novel_number} 章审校失败：{message}")
+        except Exception as exc:
+            message = f"生成执行失败：{exc}"
+            failed.append((novel_number, message))
+            log.append(f"第 {novel_number} 章审校失败：{message}")
+        else:
+            succeeded.append(novel_number)
+            log.append(f"第 {novel_number} 章审校成功")
+
+    log.append(f"批量审校完成：成功 {len(succeeded)} 章，失败 {len(failed)} 章")
+    if failed:
+        success_label = _format_chapter_numbers(succeeded) or "无"
+        failed_label = _format_chapter_numbers([chapter_number for chapter_number, _ in failed])
+        error = f"批量审校部分失败：成功章节 {success_label}；失败章节 {failed_label}"
         return GenerationExecutionResult(
             status="failed",
             progress=100,

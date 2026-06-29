@@ -46,7 +46,9 @@ export interface ServiceBridgeStatus {
 | 创建已存在章节文件返回 409 | 显示后端中文错误，不覆盖当前编辑器正文 |
 | 章节保存返回 404 | 显示“章节文件不存在”，不自动创建 `chapter_X.txt` |
 | 已接入阶段生成任务创建成功 | `architecture`、`directory`、`draft`、`finalization`、`consistency` 同步返回 `done` 或 `failed`，页面展示任务状态、错误和日志 |
-| 批量定稿任务创建成功 | `batch` 同步执行已有章节批量定稿，返回 `done` 或 `failed`，日志包含逐章结果 |
+| 批量草稿任务创建成功 | `batchDraft` 同步执行缺失章节草稿生成，跳过已有章节，返回 `done` 或 `failed`，日志包含逐章结果 |
+| 批量定稿任务创建成功 | `batchFinalization` 同步执行已有章节批量定稿；旧 `batch` 兼容同一语义，返回 `done` 或 `failed`，日志包含逐章结果 |
+| 批量审校任务创建成功 | `batchConsistency` 同步执行已有章节逐章审校，返回 `done` 或 `failed`，日志包含逐章审校结果 |
 | 生成任务创建返回 400 `{"detail": "章节文件不存在：2"}` | 页面展示“章节文件不存在：2”或带行动建议的等价文案 |
 
 ### 5. Good/Base/Bad Cases
@@ -59,13 +61,13 @@ export interface ServiceBridgeStatus {
 
 - `cd frontend && npm run typecheck`
 - `cd frontend && npm run build`
-- 前端源码/合约测试应覆盖生成任务页的真实后端边界：目标章节提示、草稿不要求预先存在章节文件、审校要求已有章节正文、批量定稿缺章提示、后端错误 `detail` 透传、`queued` 详情解释。
+- 前端源码/合约测试应覆盖生成任务页的真实后端边界：目标章节提示、草稿不要求预先存在章节文件、审校要求已有章节正文、批量草稿可生成缺失章节且跳过已有章节、批量定稿/审校缺章提示、后端错误 `detail` 透传、`queued` 详情解释。
 - 真实后端冒烟：
   - 保存项目输出目录。
   - 工作台保存核心项目文件并检查真实文件落盘。
   - 章节页保存已存在 `chapter_1.txt` 并检查真实文件落盘。
   - 创建已接入阶段生成任务并确认 `done` / `failed`、错误和日志展示。
-  - 创建批量定稿任务并确认 `done` / `failed`、逐章日志和错误汇总。
+  - 创建批量草稿、批量定稿、批量审校任务并确认 `done` / `failed`、逐章日志和错误汇总。
 - 离线预览冒烟：
   - 使用不可用 API 地址启动前端或停止后端。
   - 确认页面显示离线预览或断线状态。
@@ -98,7 +100,7 @@ const writeUnavailableMessage = computed(() =>
 - 项目页：展示当前项目、输出路径和小说参数；通过 `serviceBridge.createProject(...)` 和 `serviceBridge.switchProject(...)` 调用真实后端创建、打开和切换本地项目；离线预览或断线时这些写操作必须禁用或提前提示。
 - 工作台：只负责核心项目文件编辑闭环；章节导航只作为上下文和跳转线索，不承担章节正文保存。
 - 章节编辑页：展示已有章节和计划章节；计划章节来自后端 `status="planned"`，编辑器保持只读，用户必须先通过 `serviceBridge.createChapter(chapterOrder)` 创建缺失的 `chapter_X.txt`，之后才能编辑并通过 `saveChapter` 保存。
-- 生成任务页：通过后端创建任务。已接入阶段包括设定、目录、草稿、定稿、批量定稿和审校，会同步真实执行并返回 `done` / `failed`；审校结果写入任务日志且不自动修改小说文件；批量定稿只处理已有章节文件，不自动生成缺失草稿。
+- 生成任务页：通过后端创建任务。已接入阶段包括设定、目录、草稿、定稿、批量草稿、批量定稿、批量审校和审校，会同步真实执行并返回 `done` / `failed`；审校结果写入任务日志且不自动修改小说文件；批量草稿生成缺失章节并跳过已有章节，批量定稿和批量审校只处理已有章节文件。
 - 知识库页：读类信息可离线预览；导入、清理、保存角色、写入章节参数必须要求真实后端。
 
 ## Scenario: 计划章节创建入口
@@ -128,7 +130,7 @@ POST /api/chapters/{chapter_number}
   - 保存按钮必须禁用或提前提示“请先创建章节文件”。
   - 创建按钮必须受 `serviceBridge.canWrite(...)` 控制。
 - 创建成功后，store 用响应替换同 ID 章节记录，重置该章节 draft，并保持该章节选中。
-- 生成页判断定稿、审校和批量是否缺章节文件时，不能把 `planned` 章节当成已有 `chapter_X.txt`。
+- 生成页判断定稿、审校、批量定稿和批量审校是否缺章节文件时，不能把 `planned` 章节当成已有 `chapter_X.txt`；批量草稿允许 planned/缺失章节进入生成流程。
 
 ### 4. Validation & Error Matrix
 
@@ -144,7 +146,7 @@ POST /api/chapters/{chapter_number}
 - Good: 目录中有第 2 章但文件缺失，章节页显示计划章节，点击创建后可编辑保存。
 - Base: 后端断开且列表来自 mock，页面可展示预览数据但创建按钮不可写。
 - Bad: 页面直接在 `mockApi` 或本地 store 里伪造创建成功；这会让用户误以为真实文件已落盘。
-- Bad: 生成页批量校验把 `planned` 章节算作已有文件，导致后端再返回缺文件错误。
+- Bad: 生成页批量定稿/审校校验把 `planned` 章节算作已有文件，导致后端再返回缺文件错误。
 
 ### 6. Tests Required
 
