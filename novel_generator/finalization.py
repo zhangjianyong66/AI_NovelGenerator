@@ -37,11 +37,12 @@ def _write_text_atomic(path: str, content: str):
         raise
 
 
-def _last_paragraph(text: str, max_chars: int = 600) -> str:
+def _ending_excerpt(text: str, max_chars: int = 1500, max_paragraphs: int = 3) -> str:
     paragraphs = [item.strip() for item in re.split(r"\n\s*\n", text.strip()) if item.strip()]
     if not paragraphs:
         return text.strip()[-max_chars:]
-    return paragraphs[-1][-max_chars:]
+    excerpt = "\n\n".join(paragraphs[-max_paragraphs:])
+    return excerpt[-max_chars:]
 
 
 def _chapter_outline_context(directory_text: str, novel_number: int) -> str:
@@ -100,7 +101,7 @@ def finalize_chapter(
     previous_chapter_text = read_file(os.path.join(chapters_dir, f"chapter_{novel_number - 1}.txt")) if novel_number > 1 else ""
     directory_text = read_file(os.path.join(filepath, "Novel_directory.txt"))
     prompt_polish = prompt_definitions.finalize_polish_prompt.format(
-        previous_chapter_excerpt=_last_paragraph(previous_chapter_text),
+        previous_chapter_excerpt=_ending_excerpt(previous_chapter_text),
         current_chapter_outline=_chapter_outline_context(directory_text, novel_number),
         next_chapter_outline=_chapter_outline_context(directory_text, novel_number + 1),
         word_number=word_number,

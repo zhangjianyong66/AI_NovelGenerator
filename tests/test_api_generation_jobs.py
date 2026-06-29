@@ -194,7 +194,12 @@ def test_finalize_chapter_polishes_and_rewrites_chapter_with_context(tmp_path, m
     output_path = tmp_path / "novel"
     chapters_path = output_path / "chapters"
     chapters_path.mkdir(parents=True)
-    (chapters_path / "chapter_1.txt").write_text("前章最后一段：门外响起潮声。", encoding="utf-8")
+    (chapters_path / "chapter_1.txt").write_text(
+        "前章倒数第三段：林澈停在门内，听见走廊尽头的脚步声。\n\n"
+        "前章倒数第二段：灯光忽明忽暗，线人的暗号迟迟没有出现。\n\n"
+        "前章最后一段：门外响起潮声。",
+        encoding="utf-8",
+    )
     (chapters_path / "chapter_2.txt").write_text("草稿原文：林澈推门进入码头。", encoding="utf-8")
     (output_path / "Novel_directory.txt").write_text(
         "第2章：码头密谈\n章节简述：林澈在码头见到线人。\n第3章：雾钟\n章节简述：雾钟敲响后危机升级。",
@@ -237,6 +242,8 @@ def test_finalize_chapter_polishes_and_rewrites_chapter_with_context(tmp_path, m
     assert (chapters_path / "chapter_2.txt").read_text(encoding="utf-8") == (
         "润色后正文：林澈推门进入码头，潮声承接了门外的等待。"
     )
+    assert "前章倒数第三段：林澈停在门内，听见走廊尽头的脚步声。" in polished_prompt
+    assert "前章倒数第二段：灯光忽明忽暗，线人的暗号迟迟没有出现。" in polished_prompt
     assert "前章最后一段：门外响起潮声。" in polished_prompt
     assert "草稿原文：林澈推门进入码头。" in polished_prompt
     assert "第3章：雾钟" in polished_prompt
