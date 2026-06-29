@@ -59,6 +59,14 @@ API 返回给前端时使用 camelCase，并隐藏密钥正文：
 - pytest 断言
 - `AGENTS.md` 中项目级说明，如该信息会被下次复用
 
+## LLM 代理环境边界
+
+- `config.json.proxy_setting.enabled=false` 表示项目未启用代理；OpenAI 兼容 LLM 客户端不得隐式读取进程继承的 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`OPENAI_PROXY` 等系统代理环境变量。
+- `llm_adapters.py` 是 LLM 客户端构造边界。使用 `ChatOpenAI`、`AzureChatOpenAI` 或 `openai.OpenAI` 时，应通过共享 helper 注入 `httpx.Client(trust_env=False)`；LangChain OpenAI 客户端还必须同时注入 `httpx.AsyncClient(trust_env=False)` 并显式传入 `openai_proxy=None`。
+- 不要在每个生成阶段临时清理环境变量；这会让旧 GUI、本地 API、测试和直接调用 adapter 的行为不一致。
+- 如果未来要支持项目级显式代理，应把 `proxy_setting` 作为明确配置传入 adapter，并补充测试；不要回退到依赖系统环境变量。
+- 回归测试应覆盖 `ALL_PROXY=socks://127.0.0.1:10808` 这类系统代理写法，确保构造 OpenAI 兼容 adapter 不会抛出 `Unknown scheme for proxy URL`。
+
 ## 输出目录文件
 
 输出目录来自 `config.json` 的 `other_params.filepath`。常见文件包括：

@@ -8,6 +8,7 @@ from google.genai import types
 from azure.ai.inference import ChatCompletionsClient
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.inference.models import SystemMessage, UserMessage
+import httpx
 from openai import OpenAI
 import requests
 
@@ -38,6 +39,40 @@ class BaseLLMAdapter:
     def invoke(self, prompt: str) -> str:
         raise NotImplementedError("Subclasses must implement .invoke(prompt) method.")
 
+
+def _http_client_without_system_proxy() -> httpx.Client:
+    return httpx.Client(trust_env=False)
+
+
+def _async_http_client_without_system_proxy() -> httpx.AsyncClient:
+    return httpx.AsyncClient(trust_env=False)
+
+
+def _create_chat_openai(**kwargs) -> ChatOpenAI:
+    return ChatOpenAI(
+        **kwargs,
+        openai_proxy=None,
+        http_client=_http_client_without_system_proxy(),
+        http_async_client=_async_http_client_without_system_proxy(),
+    )
+
+
+def _create_azure_chat_openai(**kwargs) -> AzureChatOpenAI:
+    return AzureChatOpenAI(
+        **kwargs,
+        openai_proxy=None,
+        http_client=_http_client_without_system_proxy(),
+        http_async_client=_async_http_client_without_system_proxy(),
+    )
+
+
+def _create_openai_client(**kwargs) -> OpenAI:
+    return OpenAI(
+        **kwargs,
+        http_client=_http_client_without_system_proxy(),
+    )
+
+
 class DeepSeekAdapter(BaseLLMAdapter):
     """
     适配官方/OpenAI兼容接口（使用 langchain.ChatOpenAI）
@@ -50,7 +85,7 @@ class DeepSeekAdapter(BaseLLMAdapter):
         self.temperature = temperature
         self.timeout = timeout
 
-        self._client = ChatOpenAI(
+        self._client = _create_chat_openai(
             model=self.model_name,
             api_key=self.api_key,
             base_url=self.base_url,
@@ -78,7 +113,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         self.temperature = temperature
         self.timeout = timeout
 
-        self._client = ChatOpenAI(
+        self._client = _create_chat_openai(
             model=self.model_name,
             api_key=self.api_key,
             base_url=self.base_url,
@@ -154,7 +189,7 @@ class AzureOpenAIAdapter(BaseLLMAdapter):
         self.temperature = temperature
         self.timeout = timeout
 
-        self._client = AzureChatOpenAI(
+        self._client = _create_azure_chat_openai(
             azure_endpoint=self.azure_endpoint,
             azure_deployment=self.azure_deployment,
             api_version=self.api_version,
@@ -186,7 +221,7 @@ class OllamaAdapter(BaseLLMAdapter):
         if self.api_key == '':
             self.api_key= 'ollama'
 
-        self._client = ChatOpenAI(
+        self._client = _create_chat_openai(
             model=self.model_name,
             api_key=self.api_key,
             base_url=self.base_url,
@@ -211,7 +246,7 @@ class MLStudioAdapter(BaseLLMAdapter):
         self.temperature = temperature
         self.timeout = timeout
 
-        self._client = ChatOpenAI(
+        self._client = _create_chat_openai(
             model=self.model_name,
             api_key=self.api_key,
             base_url=self.base_url,
@@ -291,7 +326,7 @@ class VolcanoEngineAIAdapter(BaseLLMAdapter):
         self.temperature = temperature
         self.timeout = timeout
 
-        self._client = OpenAI(
+        self._client = _create_openai_client(
             base_url=self.base_url,
             api_key=api_key,
             timeout=timeout  # 添加超时配置
@@ -325,7 +360,7 @@ class SiliconFlowAdapter(BaseLLMAdapter):
         self.temperature = temperature
         self.timeout = timeout
 
-        self._client = OpenAI(
+        self._client = _create_openai_client(
             base_url=self.base_url,
             api_key=api_key,
             timeout=timeout  # 添加超时配置
@@ -362,7 +397,7 @@ class GrokAdapter(BaseLLMAdapter):
         self.temperature = temperature
         self.timeout = timeout
 
-        self._client = OpenAI(
+        self._client = _create_openai_client(
             base_url=self.base_url,
             api_key=self.api_key,
             timeout=self.timeout
