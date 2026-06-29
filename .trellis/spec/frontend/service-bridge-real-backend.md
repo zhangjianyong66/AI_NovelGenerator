@@ -45,10 +45,10 @@ export interface ServiceBridgeStatus {
 | 创建计划章节文件 | 必须调用 `serviceBridge.createChapter()`，真实后端不可用时禁用或提前提示 |
 | 创建已存在章节文件返回 409 | 显示后端中文错误，不覆盖当前编辑器正文 |
 | 章节保存返回 404 | 显示“章节文件不存在”，不自动创建 `chapter_X.txt` |
-| 已接入阶段生成任务创建成功 | `architecture`、`directory`、`draft`、`finalization`、`consistency` 同步返回 `done` 或 `failed`，页面展示任务状态、错误和日志 |
-| 批量草稿任务创建成功 | `batchDraft` 同步执行缺失章节草稿生成，跳过已有章节，返回 `done` 或 `failed`，日志包含逐章结果 |
-| 批量定稿任务创建成功 | `batchFinalization` 同步执行已有章节批量定稿；旧 `batch` 兼容同一语义，返回 `done` 或 `failed`，日志包含逐章结果 |
-| 批量审校任务创建成功 | `batchConsistency` 同步执行已有章节逐章审校，返回 `done` 或 `failed`，日志包含逐章审校结果 |
+| 已接入阶段生成任务创建成功 | `architecture`、`directory`、`draft`、`finalization`、`consistency` 创建响应返回 `queued` 或 `running` 初始快照，最终 `done` / `failed` 通过 WebSocket 或列表/详情接口同步，页面展示任务状态、错误和日志 |
+| 批量草稿任务创建成功 | `batchDraft` 创建后后台执行缺失章节草稿生成并跳过已有章节，最终 `done` / `failed` 通过 WebSocket 或列表/详情接口同步，日志包含逐章结果 |
+| 批量定稿任务创建成功 | `batchFinalization` 创建后后台执行已有章节批量定稿；旧 `batch` 兼容同一语义，最终 `done` / `failed` 通过 WebSocket 或列表/详情接口同步，日志包含逐章结果 |
+| 批量审校任务创建成功 | `batchConsistency` 创建后后台执行已有章节逐章审校，最终 `done` / `failed` 通过 WebSocket 或列表/详情接口同步，日志包含逐章审校结果 |
 | 生成任务创建返回 400 `{"detail": "章节文件不存在：2"}` | 页面展示“章节文件不存在：2”或带行动建议的等价文案 |
 
 ### 5. Good/Base/Bad Cases
@@ -62,6 +62,7 @@ export interface ServiceBridgeStatus {
 - `cd frontend && npm run typecheck`
 - `cd frontend && npm run build`
 - 前端源码/合约测试应覆盖生成任务页的真实后端边界：目标章节提示、草稿不要求预先存在章节文件、审校要求已有章节正文、批量草稿可生成缺失章节且跳过已有章节、批量定稿/审校缺章提示、后端错误 `detail` 透传、`queued` 详情解释。
+- 生成任务实时状态应通过 `serviceBridge.subscribeGenerationJobs(projectId, onJob)` 订阅 WebSocket `WS /api/projects/{project_id}/generation-jobs/ws`；页面和 store 不应直接拼接 WebSocket URL 或解析消息。
 - 真实后端冒烟：
   - 保存项目输出目录。
   - 工作台保存核心项目文件并检查真实文件落盘。
@@ -100,7 +101,7 @@ const writeUnavailableMessage = computed(() =>
 - 项目页：展示当前项目、输出路径和小说参数；通过 `serviceBridge.createProject(...)` 和 `serviceBridge.switchProject(...)` 调用真实后端创建、打开和切换本地项目；离线预览或断线时这些写操作必须禁用或提前提示。
 - 工作台：只负责核心项目文件编辑闭环；章节导航只作为上下文和跳转线索，不承担章节正文保存。
 - 章节编辑页：展示已有章节和计划章节；计划章节来自后端 `status="planned"`，编辑器保持只读，用户必须先通过 `serviceBridge.createChapter(chapterOrder)` 创建缺失的 `chapter_X.txt`，之后才能编辑并通过 `saveChapter` 保存。
-- 生成任务页：通过后端创建任务。已接入阶段包括设定、目录、草稿、定稿、批量草稿、批量定稿、批量审校和审校，会同步真实执行并返回 `done` / `failed`；审校结果写入任务日志且不自动修改小说文件；批量草稿生成缺失章节并跳过已有章节，批量定稿和批量审校只处理已有章节文件。
+- 生成任务页：通过后端创建任务。已接入阶段包括设定、目录、草稿、定稿、批量草稿、批量定稿、批量审校和审校；创建响应只表示任务已入库或开始运行，最终状态通过 WebSocket `generationJobUpdated` 完整任务快照、列表接口或详情接口同步；审校结果写入任务日志且不自动修改小说文件；批量草稿生成缺失章节并跳过已有章节，批量定稿和批量审校只处理已有章节文件。
 - 知识库页：读类信息可离线预览；导入、清理、保存角色、写入章节参数必须要求真实后端。
 
 ## Scenario: 计划章节创建入口

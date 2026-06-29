@@ -47,6 +47,23 @@ def test_generation_page_surfaces_real_backend_boundaries():
     assert "开始：" in job_detail
 
 
+def test_generation_jobs_subscribe_to_websocket_updates_through_service_bridge():
+    service_bridge = (FRONTEND_SRC / "services" / "serviceBridge.ts").read_text(encoding="utf-8")
+    generation_store = (FRONTEND_SRC / "stores" / "generation.ts").read_text(encoding="utf-8")
+    generation_page = (FRONTEND_SRC / "pages" / "GenerationPage.vue").read_text(encoding="utf-8")
+
+    assert "subscribeGenerationJobs(" in service_bridge
+    assert "new WebSocket(" in service_bridge
+    assert "generationJobUpdated" in service_bridge
+    subscription_block = service_bridge.split("subscribeGenerationJobs(", 1)[1].split("async getModelConfig", 1)[0]
+    assert "status.mode = 'disconnected'" not in subscription_block
+    assert "upsertJob(" in generation_store
+    assert "subscribeToJobUpdates(" in generation_store
+    assert "unsubscribeFromJobUpdates(" in generation_store
+    assert "generationStore.subscribeToJobUpdates" in generation_page
+    assert "generationStore.unsubscribeFromJobUpdates" in generation_page
+
+
 def test_chapter_page_supports_creating_planned_chapters_through_service_bridge():
     service_bridge = (FRONTEND_SRC / "services" / "serviceBridge.ts").read_text(encoding="utf-8")
     editor_store = (FRONTEND_SRC / "stores" / "editor.ts").read_text(encoding="utf-8")

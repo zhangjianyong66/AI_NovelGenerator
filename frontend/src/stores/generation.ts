@@ -7,6 +7,7 @@ export const useGenerationStore = defineStore('generation', {
   state: () => ({
     jobs: [] as GenerationJob[],
     isLoading: false,
+    jobUpdatesUnsubscribe: null as (() => void) | null,
   }),
   getters: {
     runningJob(state): GenerationJob | undefined {
@@ -18,7 +19,16 @@ export const useGenerationStore = defineStore('generation', {
   },
   actions: {
     resetProjectState() {
+      this.unsubscribeFromJobUpdates()
       this.jobs = []
+    },
+    upsertJob(job: GenerationJob) {
+      const existingIndex = this.jobs.findIndex((item) => item.id === job.id)
+      if (existingIndex >= 0) {
+        this.jobs = this.jobs.map((item) => (item.id === job.id ? job : item))
+        return
+      }
+      this.jobs = [job, ...this.jobs]
     },
     async loadJobs(projectId: string) {
       this.isLoading = true
@@ -32,11 +42,21 @@ export const useGenerationStore = defineStore('generation', {
       this.isLoading = true
       try {
         const job = await serviceBridge.createGenerationJob(request)
-        this.jobs = [job, ...this.jobs.filter((item) => item.id !== job.id)]
+        this.upsertJob(job)
         return job
       } finally {
         this.isLoading = false
       }
+    },
+    subscribeToJobUpdates(projectId: string) {
+      this.unsubscribeFromJobUpdates()
+      this.jobUpdatesUnsubscribe = serviceBridge.subscribeGenerationJobs(projectId, (job) => {
+        this.upsertJob(job)
+      })
+    },
+    unsubscribeFromJobUpdates() {
+      this.jobUpdatesUnsubscribe?.()
+      this.jobUpdatesUnsubscribe = null
     },
   },
 })

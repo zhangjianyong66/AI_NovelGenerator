@@ -48,6 +48,11 @@ type RequestOptions = {
   body?: unknown
 }
 
+type GenerationJobUpdateMessage = {
+  type: 'generationJobUpdated'
+  job: GenerationJob
+}
+
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:8000'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL).replace(/\/$/, '')
@@ -84,6 +89,20 @@ function normalizeError(error: unknown, fallbackMessage: string, statusCode?: nu
     detail: String(error),
     status: statusCode,
   }
+}
+
+function websocketUrl(path: string): string {
+  const url = new URL(`${apiBaseUrl}${path}`)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  return url.toString()
+}
+
+function isGenerationJobUpdateMessage(payload: unknown): payload is GenerationJobUpdateMessage {
+  if (typeof payload !== 'object' || payload === null) return false
+  const message = payload as { type?: unknown; job?: unknown }
+  if (message.type !== 'generationJobUpdated') return false
+  const job = message.job as Partial<GenerationJob> | undefined
+  return typeof job?.id === 'string' && typeof job.projectId === 'string' && typeof job.status === 'string'
 }
 
 async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -229,6 +248,69 @@ export const serviceBridge = {
 
   async getGenerationJob(jobId: string): Promise<GenerationJob> {
     return requestJson<GenerationJob>(`/api/generation-jobs/${encodeURIComponent(jobId)}`)
+  },
+
+  subscribeGenerationJobs(projectId: string, onJob: (job: GenerationJob) => void): () => void {
+    let socket: WebSocket | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let reconnectAttempts = 0
+    let closedByCaller = false
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimer !== null) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
+    }
+
+    const connect = () => {
+      clearReconnectTimer()
+      if (closedByCaller) return
+      socket = new WebSocket(
+        websocketUrl(`/api/projects/${encodeURIComponent(projectId)}/generation-jobs/ws`),
+      )
+      socket.onopen = () => {
+        status.mode = 'backend'
+        status.error = null
+        reconnectAttempts = 0
+      }
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(String(event.data)) as unknown
+          if (isGenerationJobUpdateMessage(payload)) {
+            onJob(payload.job)
+          }
+        } catch (error) {
+          status.error = normalizeError(error, '解析生成任务实时状态失败')
+        }
+      }
+      socket.onerror = () => {
+        status.error = {
+          message: '生成任务实时连接异常',
+        }
+      }
+      socket.onclose = () => {
+        socket = null
+        if (closedByCaller) return
+        reconnectAttempts += 1
+        if (reconnectAttempts > 5) {
+          status.error = {
+            message: '生成任务实时连接已断开',
+          }
+          return
+        }
+        reconnectTimer = setTimeout(connect, Math.min(1000 * reconnectAttempts, 5000))
+      }
+    }
+
+    connect()
+
+    return () => {
+      closedByCaller = true
+      clearReconnectTimer()
+      socket?.close()
+      socket = null
+    }
   },
 
   async getModelConfig(): Promise<ModelConfig> {

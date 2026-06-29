@@ -1,6 +1,8 @@
 import json
+import time
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api.server import create_app
@@ -106,6 +108,88 @@ def fake_check_consistency(**kwargs):
     return "无明显冲突"
 
 
+def wait_for_job_status(client, job_id, expected_status, timeout=2.0):
+    deadline = time.monotonic() + timeout
+    last_job = None
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/generation-jobs/{job_id}")
+        assert response.status_code == 200
+        last_job = response.json()
+        if last_job["status"] == expected_status:
+            return last_job
+        time.sleep(0.02)
+    raise AssertionError(f"任务 {job_id} 未在超时前进入 {expected_status}，最后状态：{last_job}")
+
+
+def test_generation_job_endpoint_returns_before_background_executor_finishes(tmp_path, monkeypatch):
+    output_path = tmp_path / "novel"
+    output_path.mkdir()
+    (output_path / "Novel_setting.txt").write_text("测试小说设定", encoding="utf-8")
+    (output_path / "chapter_2.txt").write_text("章节正文", encoding="utf-8")
+    config_file = tmp_path / "config.json"
+    write_generation_config(config_file, output_path)
+
+    def slow_check_consistency(**kwargs):
+        time.sleep(0.1)
+        return "后台审校完成"
+
+    monkeypatch.setattr("app.services.generation_executor.check_consistency", slow_check_consistency)
+    client = TestClient(create_app(config_file=str(config_file)))
+
+    response = client.post(
+        "/api/generation-jobs",
+        json={"projectId": "current", "stage": "consistency", "chapterNumber": 2},
+    )
+
+    assert response.status_code == 200
+    job = response.json()
+    assert job["status"] in {"queued", "running"}
+    assert job["progress"] < 100
+
+    completed_job = wait_for_job_status(client, job["id"], "done")
+    assert completed_job["progress"] == 100
+    assert completed_job["error"] is None
+    assert "后台审校完成" in completed_job["log"]
+
+
+def test_generation_job_websocket_receives_background_updates(tmp_path, monkeypatch):
+    output_path = tmp_path / "novel"
+    output_path.mkdir()
+    (output_path / "Novel_setting.txt").write_text("测试小说设定", encoding="utf-8")
+    (output_path / "chapter_2.txt").write_text("章节正文", encoding="utf-8")
+    config_file = tmp_path / "config.json"
+    write_generation_config(config_file, output_path)
+    monkeypatch.setattr("app.services.generation_executor.check_consistency", lambda **kwargs: "WebSocket 审校完成")
+    client = TestClient(create_app(config_file=str(config_file)))
+
+    with client.websocket_connect("/api/projects/current/generation-jobs/ws") as websocket:
+        response = client.post(
+            "/api/generation-jobs",
+            json={"projectId": "current", "stage": "consistency", "chapterNumber": 2},
+        )
+        assert response.status_code == 200
+        job_id = response.json()["id"]
+
+        received_statuses = []
+        final_job = None
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            message = websocket.receive_json()
+            assert message["type"] == "generationJobUpdated"
+            job = message["job"]
+            if job["id"] != job_id:
+                continue
+            received_statuses.append(job["status"])
+            if job["status"] == "done":
+                final_job = job
+                break
+
+    assert "running" in received_statuses
+    assert final_job is not None
+    assert final_job["progress"] == 100
+    assert "WebSocket 审校完成" in final_job["log"]
+
+
 def test_finalize_chapter_polishes_and_rewrites_chapter_with_context(tmp_path, monkeypatch):
     output_path = tmp_path / "novel"
     chapters_path = output_path / "chapters"
@@ -160,6 +244,46 @@ def test_finalize_chapter_polishes_and_rewrites_chapter_with_context(tmp_path, m
     assert (output_path / "character_state.txt").read_text(encoding="utf-8") == "更新后的角色状态"
 
 
+def test_finalize_chapter_rejects_mismatched_generated_chapter_heading(tmp_path, monkeypatch):
+    output_path = tmp_path / "novel"
+    chapters_path = output_path / "chapters"
+    chapters_path.mkdir(parents=True)
+    chapter_path = chapters_path / "chapter_2.txt"
+    chapter_path.write_text("# 第2章 骸骨低语\n原始正文", encoding="utf-8")
+    (output_path / "Novel_directory.txt").write_text(
+        "# 第2章 - 骸骨低语\n**本章简述**：陈凡挖出玄霄遗骸。\n"
+        "# 第3章 - 三方相遇\n**本章简述**：铁骨引爆矿洞制造混乱。",
+        encoding="utf-8",
+    )
+
+    class FakeAdapter:
+        def invoke(self, prompt):
+            if "定稿润色" in prompt:
+                return "# 第3章 三方相遇\n模型跑偏后的正文"
+            return "不会写入"
+
+    monkeypatch.setattr("novel_generator.finalization.create_llm_adapter", lambda **kwargs: FakeAdapter())
+
+    with pytest.raises(ValueError, match="章节号不匹配"):
+        finalize_chapter(
+            novel_number=2,
+            word_number=1200,
+            api_key="test-key",
+            base_url="https://example.invalid/v1",
+            model_name="test-model",
+            temperature=0.7,
+            filepath=str(output_path),
+            embedding_api_key="embedding-key",
+            embedding_url="https://example.invalid/embedding",
+            embedding_interface_format="OpenAI",
+            embedding_model_name="embedding-model",
+            interface_format="OpenAI",
+            max_tokens=4096,
+        )
+
+    assert chapter_path.read_text(encoding="utf-8") == "# 第2章 骸骨低语\n原始正文"
+
+
 def test_generation_job_endpoint_creates_lists_and_reads_job(tmp_path, monkeypatch):
     output_path = tmp_path / "novel"
     output_path.mkdir()
@@ -185,6 +309,7 @@ def test_generation_job_endpoint_creates_lists_and_reads_job(tmp_path, monkeypat
     job = response.json()
     assert job["projectId"] == "current"
     assert job["stage"] == "consistency"
+    job = wait_for_job_status(client, job["id"], "done")
     assert job["status"] == "done"
     assert job["progress"] == 100
     assert job["error"] is None
@@ -220,6 +345,7 @@ def test_generation_job_endpoint_persists_consistency_result_across_app_restart(
 
     assert response.status_code == 200
     job = response.json()
+    completed_job = wait_for_job_status(client, job["id"], "done")
 
     restarted_client = TestClient(create_app(config_file=str(config_file), state_db_file=str(state_db_file)))
     list_response = restarted_client.get("/api/projects/current/jobs")
@@ -230,7 +356,7 @@ def test_generation_job_endpoint_persists_consistency_result_across_app_restart(
     assert read_response.status_code == 200
     assert read_response.json()["status"] == "done"
     assert "审校结果：角色动机一致" in read_response.json()["log"]
-    assert read_response.json()["log"] == job["log"]
+    assert read_response.json()["log"] == completed_job["log"]
 
 
 def test_generation_job_endpoint_persists_done_job_across_app_restart(tmp_path, monkeypatch):
@@ -252,6 +378,7 @@ def test_generation_job_endpoint_persists_done_job_across_app_restart(tmp_path, 
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "done")
     assert job["status"] == "done"
 
     restarted_client = TestClient(create_app(config_file=str(config_file), state_db_file=str(state_db_file)))
@@ -280,6 +407,7 @@ def test_generation_job_endpoint_persists_failed_job_across_app_restart(tmp_path
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "failed")
     assert job["status"] == "failed"
 
     restarted_client = TestClient(create_app(config_file=str(config_file), state_db_file=str(state_db_file)))
@@ -350,6 +478,7 @@ def test_architecture_generation_job_runs_executor_and_writes_setting(tmp_path, 
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "done")
     assert job["status"] == "done"
     assert job["progress"] == 100
     assert job["error"] is None
@@ -376,6 +505,7 @@ def test_directory_generation_job_runs_executor_and_writes_directory(tmp_path, m
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "done")
     assert job["status"] == "done"
     assert job["progress"] == 100
     assert job["error"] is None
@@ -396,6 +526,7 @@ def test_architecture_generation_job_fails_when_api_key_missing(tmp_path):
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "failed")
     assert job["status"] == "failed"
     assert "缺少 API Key" in job["error"]
 
@@ -414,6 +545,7 @@ def test_directory_generation_job_fails_when_setting_missing(tmp_path):
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "failed")
     assert job["status"] == "failed"
     assert "请先生成小说设定" in job["error"]
 
@@ -437,6 +569,7 @@ def test_draft_generation_job_runs_executor_and_syncs_frontend_chapter(tmp_path,
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "done")
     assert job["status"] == "done"
     assert job["progress"] == 100
     assert job["error"] is None
@@ -468,6 +601,7 @@ def test_finalization_generation_job_runs_executor_and_updates_project_files(tmp
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "done")
     assert job["status"] == "done"
     assert job["progress"] == 100
     assert job["error"] is None
@@ -497,6 +631,7 @@ def test_consistency_generation_job_runs_executor_with_architecture_fallback(tmp
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "done")
     assert job["status"] == "done"
     assert "审校读取设定：测试小说设定" in job["log"]
 
@@ -527,7 +662,8 @@ def test_consistency_generation_job_does_not_modify_project_files(tmp_path, monk
     )
 
     assert response.status_code == 200
-    assert response.json()["status"] == "done"
+    job = wait_for_job_status(client, response.json()["id"], "done")
+    assert job["status"] == "done"
     for filename, content in files.items():
         assert (output_path / filename).read_text(encoding="utf-8") == content
 
@@ -546,6 +682,7 @@ def test_draft_generation_job_fails_when_directory_missing(tmp_path):
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "failed")
     assert job["status"] == "failed"
     assert "请先生成章节目录" in job["error"]
 
@@ -565,6 +702,7 @@ def test_draft_generation_job_fails_when_api_key_missing(tmp_path):
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "failed")
     assert job["status"] == "failed"
     assert "缺少 API Key" in job["error"]
 
@@ -583,6 +721,7 @@ def test_finalization_generation_job_fails_when_chapter_missing(tmp_path):
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "failed")
     assert job["status"] == "failed"
     assert "请先生成或保存章节正文" in job["error"]
 
@@ -602,6 +741,7 @@ def test_consistency_generation_job_fails_when_setting_missing(tmp_path):
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "failed")
     assert job["status"] == "failed"
     assert "请先准备小说设定" in job["error"]
 
@@ -622,6 +762,7 @@ def test_consistency_generation_job_fails_when_chapter_empty(tmp_path):
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "failed")
     assert job["status"] == "failed"
     assert "请先生成或保存章节正文" in job["error"]
 
@@ -645,6 +786,7 @@ def test_consistency_generation_job_fails_when_review_llm_not_selected(tmp_path)
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "failed")
     assert job["status"] == "failed"
     assert "一致性审校未选择 LLM 配置" in job["error"]
 
@@ -665,6 +807,7 @@ def test_consistency_generation_job_fails_when_api_key_missing(tmp_path):
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "failed")
     assert job["status"] == "failed"
     assert "缺少 API Key" in job["error"]
 

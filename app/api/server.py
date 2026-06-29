@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from datetime import datetime
 import json
@@ -5,12 +6,15 @@ import os
 import re
 import shutil
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from uuid import uuid4
 from typing import Any, cast
 
 import requests
 from requests.auth import HTTPBasicAuth
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -175,6 +179,49 @@ class GenerationJobCreateRequest(BaseModel):
     targetWords: int | None = None
     minimumWords: int | None = None
     autoEnrich: bool = False
+
+
+class GenerationJobConnectionManager:
+    def __init__(self) -> None:
+        self._connections: dict[str, set[WebSocket]] = {}
+        self._lock = threading.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    async def connect(self, project_id: str, websocket: WebSocket) -> None:
+        await websocket.accept()
+        self._loop = asyncio.get_running_loop()
+        with self._lock:
+            self._connections.setdefault(project_id, set()).add(websocket)
+
+    def disconnect(self, project_id: str, websocket: WebSocket) -> None:
+        with self._lock:
+            project_connections = self._connections.get(project_id)
+            if project_connections is None:
+                return
+            project_connections.discard(websocket)
+            if not project_connections:
+                self._connections.pop(project_id, None)
+
+    async def send_job(self, websocket: WebSocket, job: dict[str, Any]) -> None:
+        await websocket.send_json({"type": "generationJobUpdated", "job": job})
+
+    async def broadcast(self, job: dict[str, Any]) -> None:
+        project_id = str(job.get("projectId") or "")
+        with self._lock:
+            connections = list(self._connections.get(project_id, set()))
+        disconnected: list[WebSocket] = []
+        for websocket in connections:
+            try:
+                await self.send_job(websocket, job)
+            except RuntimeError:
+                disconnected.append(websocket)
+        for websocket in disconnected:
+            self.disconnect(project_id, websocket)
+
+    def broadcast_threadsafe(self, job: dict[str, Any]) -> None:
+        if self._loop is None or self._loop.is_closed():
+            return
+        asyncio.run_coroutine_threadsafe(self.broadcast(job), self._loop)
 
 
 class OperationResult(BaseModel):
@@ -907,17 +954,27 @@ def create_app(
     config_file: str | Path | None = None,
     state_db_file: str | Path | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="AI Novel Generator Local API")
+    config_path = Path(config_file) if config_file is not None else DEFAULT_CONFIG_FILE
+    state_path = Path(state_db_file) if state_db_file is not None else _default_state_db_file(config_path)
+    job_store = GenerationJobStore(state_path)
+    project_store = ProjectStore(state_path)
+    job_connections = GenerationJobConnectionManager()
+    job_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="generation-job")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        try:
+            yield
+        finally:
+            job_executor.shutdown(wait=False, cancel_futures=False)
+
+    app = FastAPI(title="AI Novel Generator Local API", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origin_regex=LOCAL_FRONTEND_ORIGIN_REGEX,
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    config_path = Path(config_file) if config_file is not None else DEFAULT_CONFIG_FILE
-    state_path = Path(state_db_file) if state_db_file is not None else _default_state_db_file(config_path)
-    job_store = GenerationJobStore(state_path)
-    project_store = ProjectStore(state_path)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -926,6 +983,56 @@ def create_app(
             "mode": "backend",
             "service": "AI_NovelGenerator",
         }
+
+    def save_and_broadcast_generation_job(job: GenerationJob, request_payload: dict[str, Any]) -> None:
+        job_snapshot = _model_to_dict(job)
+        job_store.save_job(job_snapshot, request_payload)
+        job_connections.broadcast_threadsafe(job_snapshot)
+
+    def execute_generation_job_in_background(
+        job: GenerationJob,
+        request: GenerationJobCreateRequest,
+        request_payload: dict[str, Any],
+        config: dict[str, Any],
+        output_path: Path,
+    ) -> None:
+        try:
+            job.status = "running"
+            job.progress = 5
+            job.log.append("任务已开始执行真实生成器")
+            save_and_broadcast_generation_job(job, request_payload)
+            result = run_generation_job(
+                config,
+                cast(ExecutableGenerationStage, request.stage),
+                output_path,
+                chapter_number=request.chapterNumber,
+                auto_enrich=request.autoEnrich,
+                minimum_words=request.minimumWords,
+                target_words=request.targetWords,
+                start_chapter=request.startChapter,
+                end_chapter=request.endChapter,
+            )
+            job.status = result.status
+            job.progress = result.progress
+            job.log.extend(result.log)
+            job.error = result.error
+        except Exception as exc:
+            job.status = "failed"
+            job.progress = 100
+            job.error = f"生成执行异常：{exc}"
+            job.log.append(job.error)
+        save_and_broadcast_generation_job(job, request_payload)
+
+    @app.websocket("/api/projects/{project_id}/generation-jobs/ws")
+    async def generation_job_updates(project_id: str, websocket: WebSocket) -> None:
+        await job_connections.connect(project_id, websocket)
+        try:
+            for job in job_store.list_jobs(project_id):
+                await job_connections.send_job(websocket, job)
+            while True:
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            job_connections.disconnect(project_id, websocket)
 
     @app.get("/api/project-config", response_model=ProjectConfig)
     def get_project_config() -> ProjectConfig:
@@ -1203,32 +1310,21 @@ def create_app(
             ],
         )
         request_payload = _model_to_dict(request)
-        job_store.save_job(_model_to_dict(job), request_payload)
+        save_and_broadcast_generation_job(job, request_payload)
 
         if request.stage in EXECUTABLE_GENERATION_STAGES:
-            job.status = "running"
-            job.progress = 5
-            job.log.append("任务已开始执行真实生成器")
-            job_store.save_job(_model_to_dict(job), request_payload)
-            result = run_generation_job(
+            job_executor.submit(
+                execute_generation_job_in_background,
+                job,
+                request,
+                request_payload,
                 config,
-                cast(ExecutableGenerationStage, request.stage),
                 output_path,
-                chapter_number=request.chapterNumber,
-                auto_enrich=request.autoEnrich,
-                minimum_words=request.minimumWords,
-                target_words=request.targetWords,
-                start_chapter=request.startChapter,
-                end_chapter=request.endChapter,
             )
-            job.status = result.status
-            job.progress = result.progress
-            job.log.extend(result.log)
-            job.error = result.error
         else:
             job.log.append("任务已创建，等待执行器接入")
+            save_and_broadcast_generation_job(job, request_payload)
 
-        job_store.save_job(_model_to_dict(job), request_payload)
         return job
 
     @app.get("/api/projects/{project_id}/jobs", response_model=list[GenerationJob])

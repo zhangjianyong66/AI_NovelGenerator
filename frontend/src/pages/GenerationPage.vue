@@ -63,7 +63,7 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import FormSection from '@/components/ui/FormSection.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -90,6 +90,7 @@ const selectedJobId = ref('')
 const bridgeStatus = ref<ServiceBridgeStatus>({ ...serviceBridge.getStatus() })
 const projectConfig = ref<ProjectConfig | null>(null)
 const chapters = ref<Chapter[]>([])
+const refreshedCompletedJobIds = new Set<string>()
 const batchForm = ref({
   startChapter: 1,
   endChapter: 1,
@@ -124,8 +125,13 @@ onMounted(async () => {
   syncBridgeStatus()
   await loadGenerationContext()
   await generationStore.loadJobs(projectsStore.activeProjectId)
+  generationStore.subscribeToJobUpdates(projectsStore.activeProjectId)
   syncBridgeStatus()
   selectedJobId.value = jobs.value[0]?.id ?? ''
+})
+
+onUnmounted(() => {
+  generationStore.unsubscribeFromJobUpdates()
 })
 
 const selectedJob = computed(() => jobs.value.find((job) => job.id === selectedJobId.value) ?? jobs.value[0])
@@ -242,9 +248,6 @@ const createJob = async (stage: GenerationStage) => {
       stage,
       chapterNumber: chapterStages.has(stage) ? currentChapterNumber.value : undefined,
     })
-    if (refreshChapterStages.has(stage)) {
-      await loadGenerationContext()
-    }
     syncBridgeStatus()
     selectedJobId.value = jobs.value[0]?.id ?? selectedJobId.value
   } catch (error) {
@@ -270,9 +273,6 @@ const createBatchJob = async (stage: GenerationStage) => {
       stage,
       ...batchForm.value,
     })
-    if (refreshChapterStages.has(stage)) {
-      await loadGenerationContext()
-    }
     syncBridgeStatus()
     selectedJobId.value = jobs.value[0]?.id ?? selectedJobId.value
   } catch (error) {
@@ -284,6 +284,13 @@ const createBatchJob = async (stage: GenerationStage) => {
 watch(jobs, (nextJobs) => {
   if (!selectedJobId.value || !nextJobs.some((job) => job.id === selectedJobId.value)) {
     selectedJobId.value = nextJobs[0]?.id ?? ''
+  }
+  for (const job of nextJobs) {
+    if (job.status !== 'done' && job.status !== 'failed') continue
+    if (!refreshChapterStages.has(job.stage)) continue
+    if (refreshedCompletedJobIds.has(job.id)) continue
+    refreshedCompletedJobIds.add(job.id)
+    void loadGenerationContext()
   }
 })
 </script>

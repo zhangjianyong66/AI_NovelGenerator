@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -66,6 +67,19 @@ def fake_generate_chapter_draft(**kwargs):
     (legacy_dir / f"chapter_{novel_number}.txt").write_text(f"第{novel_number}章草稿正文", encoding="utf-8")
 
 
+def wait_for_job_status(client, job_id, expected_status, timeout=2.0):
+    deadline = time.monotonic() + timeout
+    last_job = None
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/generation-jobs/{job_id}")
+        assert response.status_code == 200
+        last_job = response.json()
+        if last_job["status"] == expected_status:
+            return last_job
+        time.sleep(0.02)
+    raise AssertionError(f"任务 {job_id} 未在超时前进入 {expected_status}，最后状态：{last_job}")
+
+
 def test_batch_generation_job_runs_real_finalization_for_each_chapter(tmp_path, monkeypatch):
     output_path = tmp_path / "novel"
     output_path.mkdir()
@@ -97,6 +111,7 @@ def test_batch_generation_job_runs_real_finalization_for_each_chapter(tmp_path, 
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "done")
     assert job["status"] == "done"
     assert job["progress"] == 100
     assert job["error"] is None
@@ -139,6 +154,7 @@ def test_batch_draft_generation_job_creates_missing_chapters_and_skips_existing(
     job = response.json()
     assert job["stage"] == "batchDraft"
     assert job["title"] == "批量生成草稿"
+    job = wait_for_job_status(client, job["id"], "done")
     assert job["status"] == "done"
     assert job["error"] is None
     assert calls == [2, 3]
@@ -173,6 +189,7 @@ def test_batch_draft_generation_job_continues_after_chapter_failure(tmp_path, mo
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "failed")
     assert job["status"] == "failed"
     assert calls == [1, 2, 3]
     assert "批量草稿部分失败：成功章节 1、3；失败章节 2" in job["error"]
@@ -207,6 +224,7 @@ def test_batch_finalization_generation_job_accepts_explicit_stage(tmp_path, monk
     job = response.json()
     assert job["stage"] == "batchFinalization"
     assert job["title"] == "批量定稿章节"
+    job = wait_for_job_status(client, job["id"], "done")
     assert job["status"] == "done"
     assert calls == [1, 2]
     assert "批量定稿完成：成功 2 章，失败 0 章" in job["log"]
@@ -245,6 +263,7 @@ def test_batch_consistency_generation_job_reviews_each_chapter_without_modifying
     job = response.json()
     assert job["stage"] == "batchConsistency"
     assert job["title"] == "批量一致性审校"
+    job = wait_for_job_status(client, job["id"], "done")
     assert job["status"] == "done"
     assert reviewed_chapters == ["第1章正文", "第2章正文"]
     assert "审校结果：第1章正文" in job["log"]
@@ -287,6 +306,7 @@ def test_batch_generation_job_continues_after_chapter_failure_and_summarizes(tmp
 
     assert response.status_code == 200
     job = response.json()
+    job = wait_for_job_status(client, job["id"], "failed")
     assert job["status"] == "failed"
     assert job["progress"] == 100
     assert calls == [1, 2, 3]
@@ -324,6 +344,7 @@ def test_batch_generation_job_endpoint_creates_batch_job(tmp_path):
     job = response.json()
     assert job["stage"] == "batch"
     assert job["title"] == "批量定稿章节"
+    job = wait_for_job_status(client, job["id"], "failed")
     assert job["status"] == "failed"
     assert job["error"] == "批量定稿部分失败：成功章节 无；失败章节 1、2、3"
     assert "章节范围：1-3" in job["log"]

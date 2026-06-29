@@ -52,12 +52,12 @@
 - 批量章节范围无效：返回 `400`；批量定稿和批量审校缺失章节文件时指出第一个缺失章节。批量草稿允许缺失章节文件并负责生成，遇到已有章节默认跳过不覆盖。
 - WebDAV URL 为空：返回 `400`；真实网络错误不伪装成成功。
 
-## Scenario: Generation Job Synchronous Executor
+## Scenario: Generation Job Background Executor
 
 ### 1. Scope / Trigger
 
-- Trigger: `POST /api/generation-jobs` 的 `architecture`、`directory`、`draft`、`finalization` 和 `consistency` 阶段已接入本地同步真实执行器。
-- Scope: FastAPI handler 创建任务记录，`app/services/generation_executor.py` 负责 legacy 配置解析、旧生成函数调用、文件非空校验和用户可见错误。
+- Trigger: `POST /api/generation-jobs` 的 `architecture`、`directory`、`draft`、`finalization`、`batch`、`batchDraft`、`batchFinalization`、`batchConsistency` 和 `consistency` 阶段已接入本地后台真实执行器，并通过 WebSocket 推送任务状态。
+- Scope: FastAPI handler 创建并持久化任务记录，后台线程调用 `app/services/generation_executor.py` 执行 legacy 配置解析、旧生成函数调用、文件非空校验和用户可见错误；WebSocket 仅推送已保存的完整任务快照。
 
 ### 2. Signatures
 
@@ -69,7 +69,9 @@
   - `startChapter`、`endChapter`、`targetWords`、`minimumWords`、`autoEnrich` 供 `batchDraft`、`batchFinalization`、`batchConsistency` 和兼容旧 `batch` 使用；`finalization` 可消费 `targetWords`、`minimumWords`、`autoEnrich` 做可选扩写。
 - Response model: `GenerationJob`
   - `status` 可为 `queued`、`running`、`done`、`failed`。
-  - 同步执行返回时，`architecture` / `directory` / `draft` / `finalization` / `consistency` 通常应为 `done` 或 `failed`，不应长期停在 `running`。
+- WebSocket: `WS /api/projects/{project_id}/generation-jobs/ws`
+  - 消息：`{"type": "generationJobUpdated", "job": GenerationJob}`。
+  - 连接建立后可先发送当前项目已有任务快照；后续只广播同一 `project_id` 的任务更新。
 
 ### 3. Contracts
 
@@ -89,6 +91,8 @@
   - 使用 `choose_configs.final_chapter_llm` 找到 `llm_configs` 条目。
   - 以根部 `chapter_X.txt` 为前端权威输入，执行前同步到旧函数读取的 `chapters/chapter_X.txt`。
   - 调用 `finalize_chapter(...)`，先基于前章结尾、当前章节目录和下一章节目录润色当前章节正文并写回 `chapters/chapter_X.txt`，再更新 `global_summary.txt`、`character_state.txt`，并沿用旧逻辑尝试更新 `vectorstore/`。
+  - 当前章节目录和下一章节目录必须通过 `chapter_directory_parser.get_chapter_outline_context(...)` 截取，不能使用只识别行首 `第N章` 的临时正则；章节目录常见格式是 Markdown 标题 `# 第N章 - 标题`，错误截取会把后续章节一并塞进定稿 prompt，导致模型把第 N 章写成第 N+1 章。
+  - 定稿模型返回正文如果第一条非空行显式标注了与当前 `novel_number` 不一致的章节号，必须拒绝覆盖章节文件，让任务失败并保留原文。
   - 执行后再次同步 `chapters/chapter_X.txt` 到根部 `chapter_X.txt`。
 - `consistency`：
   - 使用 `choose_configs.consistency_review_llm` 找到 `llm_configs` 条目。
@@ -111,6 +115,10 @@
   - API 层继续校验范围和缺失章节文件。
   - 服务层逐章复用 `consistency`，审校结果写入任务日志，不修改章节正文、摘要、角色状态、剧情要点或向量库。
   - 全部成功返回 `done`；存在任一失败返回 `failed`，`error` 是成功/失败章节汇总，逐章失败原因写入日志。
+- 创建响应：
+  - `POST /api/generation-jobs` 对可执行阶段应尽快返回已持久化的 `queued` 或 `running` 初始快照，不等待真实生成完成。
+  - 后台执行开始时保存并广播 `running/progress=5`；完成后保存并广播最终 `done` 或 `failed`。
+  - 前端和测试不得假设创建响应已经包含最终日志、错误或输出文件结果；需要通过 WebSocket、列表接口或详情接口读取最终状态。
 
 ### 4. Validation & Error Matrix
 
@@ -119,24 +127,25 @@
 - `batchDraft` 已有章节文件 -> 任务日志记录跳过，不覆盖章节正文。
 - `batchFinalization` / `batchConsistency` / 兼容旧 `batch` 缺章节文件 -> HTTP `400`，`detail="章节文件不存在：<chapter>"`。
 - 批量阶段单章失败 -> 任务响应 `status="failed"`，不是 HTTP 失败；日志包含逐章失败原因。
-- `architecture` / `directory` / `draft` / `finalization` / `consistency` 缺阶段模型选择 -> 返回 `GenerationJob(status="failed")`，`error` 为中文原因。
-- LLM 配置不存在、缺 API Key、缺模型名、缺接口格式 -> 返回 `failed` 任务，不伪装成功。
-- 旧生成函数返回空文件或未写目标文件 -> 返回 `failed` 任务，说明目标生成结果为空。
-- `draft` 缺 `Novel_directory.txt` -> 返回 `failed` 任务，`error="请先生成章节目录"`。
-- `finalization` 缺根部章节正文 -> 返回 `failed` 任务，`error="请先生成或保存章节正文"`。
-- `consistency` 缺 `Novel_setting.txt` 和 `Novel_architecture.txt` -> 返回 `failed` 任务，`error="请先准备小说设定"`。
-- `consistency` 根部章节正文为空 -> 返回 `failed` 任务，`error="请先生成或保存章节正文"`。
-- `consistency` 审校模型返回空白 -> 返回 `failed` 任务，`error="一致性审校结果为空"`。
+- `architecture` / `directory` / `draft` / `finalization` / `consistency` 缺阶段模型选择 -> 后台最终保存 `GenerationJob(status="failed")`，`error` 为中文原因。
+- LLM 配置不存在、缺 API Key、缺模型名、缺接口格式 -> 后台最终保存 `failed` 任务，不伪装成功。
+- 旧生成函数返回空文件或未写目标文件 -> 后台最终保存 `failed` 任务，说明目标生成结果为空。
+- `draft` 缺 `Novel_directory.txt` -> 后台最终保存 `failed` 任务，`error="请先生成章节目录"`。
+- `finalization` 缺根部章节正文 -> 后台最终保存 `failed` 任务，`error="请先生成或保存章节正文"`。
+- `finalization` 模型返回显式错误章节标题，例如定稿第 2 章却返回 `# 第3章 ...` -> 后台最终保存 `failed` 任务，不覆盖 `chapter_2.txt`。
+- `consistency` 缺 `Novel_setting.txt` 和 `Novel_architecture.txt` -> 后台最终保存 `failed` 任务，`error="请先准备小说设定"`。
+- `consistency` 根部章节正文为空 -> 后台最终保存 `failed` 任务，`error="请先生成或保存章节正文"`。
+- `consistency` 审校模型返回空白 -> 后台最终保存 `failed` 任务，`error="一致性审校结果为空"`。
 
 ### 5. Good/Base/Bad Cases
 
-- Good: 有效 LLM 配置 + 项目参数完整，`architecture` 返回 `done`，`Novel_architecture.txt` 和 `Novel_setting.txt` 均非空。
-- Base: 无 API Key，`architecture` 返回 `failed` 任务，前端能在详情里展示错误。
+- Good: 有效 LLM 配置 + 项目参数完整，`architecture` 创建响应返回初始快照，随后详情接口或 WebSocket 更新为 `done`，`Novel_architecture.txt` 和 `Novel_setting.txt` 均非空。
+- Base: 无 API Key，`architecture` 创建响应返回初始快照，随后详情接口或 WebSocket 更新为 `failed` 任务，前端能在详情里展示错误。
 - Bad: `directory` 在缺少设定文件时静默返回 `done` 或写入空目录文件；这是错误实现。
 - Good: `draft` 成功后，`chapters/chapter_1.txt` 和根部 `chapter_1.txt` 均非空，`GET /api/projects/current/chapters` 能读到章节正文。
 - Base: `finalization` 成功后，章节正文会被润色后写回，`global_summary.txt` 和 `character_state.txt` 更新；`plot_arcs.txt` 当前不属于该执行器合同。
 - Good: `consistency` 成功后，任务日志包含审校结果，项目文件内容保持不变。
-- Base: `consistency` 缺小说设定或缺 API Key 时返回 `failed` 任务，前端能在详情里展示错误。
+- Base: `consistency` 缺小说设定或缺 API Key 时后台最终保存 `failed` 任务，前端能在详情里展示错误。
 - Bad: `draft` 继续要求根部 `chapter_X.txt` 已存在，导致前端无法从目录推进到章节草稿。
 - Bad: `consistency` 把审校结果写回章节或状态文件；审校当前是只读检查，不做自动修订。
 
@@ -146,13 +155,16 @@
 - 真实 LLM 调用必须通过 monkeypatch fake 掉 legacy 生成函数。
 - 断言点：
   - 成功任务的 `status == "done"`、`progress == 100`。
+  - `POST /api/generation-jobs` 创建可执行任务时先返回 `queued` 或 `running`，不阻塞等待最终状态。
+  - WebSocket 订阅能收到 `generationJobUpdated`，且最终快照包含 `done` 或 `failed`、日志和错误。
   - 输出文件真实落盘且非空。
-  - 缺 API Key / 缺设定文件返回 `failed` 任务和中文错误。
+  - 缺 API Key / 缺设定文件最终保存 `failed` 任务和中文错误。
   - `draft` 成功时断言双路径章节文件同步，且章节列表可读。
   - `finalization` 成功时断言润色后章节正文、摘要和角色状态文件更新。
+  - `finalization` 使用 Markdown 章节目录时，断言当前章节目录不包含下一章；模型返回错误章节标题时，断言原章节正文未被覆盖。
   - `consistency` 成功时断言审校结果持久化到任务日志，且章节、摘要、角色状态和剧情要点文件不变。
   - `batchDraft` 有效配置下生成缺失章节并跳过已有章节。
-  - `batchFinalization` / 兼容旧 `batch` 有效配置下返回 `done`；部分章节失败时返回 `failed`，并断言后续章节仍被尝试执行。
+  - `batchFinalization` / 兼容旧 `batch` 有效配置下最终保存 `done`；部分章节失败时最终保存 `failed`，并断言后续章节仍被尝试执行。
   - `batchConsistency` 成功时断言审校结果写入任务日志，且项目文件保持不变。
 
 ### 7. Wrong vs Correct
