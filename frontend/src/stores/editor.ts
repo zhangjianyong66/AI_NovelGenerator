@@ -67,6 +67,20 @@ export const useEditorStore = defineStore('editor', {
     persistActiveChapter() {
       updateProjectWorkspaceState(this.activeProjectId, { activeChapterId: this.activeChapterId })
     },
+    async syncCurrentChapterConfig(chapterOrder: number) {
+      if (!Number.isInteger(chapterOrder) || chapterOrder <= 0) return
+      if (!serviceBridge.canWrite(serviceBridge.getStatus())) return
+
+      try {
+        const projectConfig = await serviceBridge.getProjectConfig()
+        if (!serviceBridge.canWrite(serviceBridge.getStatus())) return
+        if (projectConfig.novelParams.chapterNum === String(chapterOrder)) return
+        projectConfig.novelParams.chapterNum = String(chapterOrder)
+        await serviceBridge.saveProjectConfig(projectConfig)
+      } catch (error) {
+        this.error = getErrorMessage(error, '同步当前章节失败')
+      }
+    },
     persistActiveProjectFile() {
       updateProjectWorkspaceState(this.activeProjectId, { activeProjectFileId: this.activeProjectFileId })
     },
@@ -97,6 +111,9 @@ export const useEditorStore = defineStore('editor', {
           this.chapters[0]?.id ??
           ''
         this.persistActiveChapter()
+        if (this.activeChapter) {
+          void this.syncCurrentChapterConfig(this.activeChapter.order)
+        }
       } catch (error) {
         this.error = getErrorMessage(error, '加载章节失败')
         throw error
@@ -107,12 +124,18 @@ export const useEditorStore = defineStore('editor', {
     selectChapter(chapterId: string) {
       this.activeChapterId = chapterId
       this.persistActiveChapter()
+      if (this.activeChapter) {
+        void this.syncCurrentChapterConfig(this.activeChapter.order)
+      }
     },
     selectPreviousChapter() {
       const activeIndex = this.chapters.findIndex((chapter) => chapter.id === this.activeChapterId)
       if (activeIndex > 0) {
         this.activeChapterId = this.chapters[activeIndex - 1].id
         this.persistActiveChapter()
+        if (this.activeChapter) {
+          void this.syncCurrentChapterConfig(this.activeChapter.order)
+        }
       }
     },
     selectNextChapter() {
@@ -120,6 +143,9 @@ export const useEditorStore = defineStore('editor', {
       if (activeIndex >= 0 && activeIndex < this.chapters.length - 1) {
         this.activeChapterId = this.chapters[activeIndex + 1].id
         this.persistActiveChapter()
+        if (this.activeChapter) {
+          void this.syncCurrentChapterConfig(this.activeChapter.order)
+        }
       }
     },
     updateActiveChapterDraft(content: string) {
@@ -170,6 +196,7 @@ export const useEditorStore = defineStore('editor', {
         this.chapterDrafts[createdChapter.id] = createdChapter.content
         this.lastSavedAt = createdChapter.updatedAt
         this.persistActiveChapter()
+        void this.syncCurrentChapterConfig(createdChapter.order)
       } catch (error) {
         this.error = getErrorMessage(error, '创建章节失败')
         throw error

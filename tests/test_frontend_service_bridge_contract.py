@@ -78,6 +78,30 @@ def test_chapter_page_supports_creating_planned_chapters_through_service_bridge(
     assert "创建章节文件" in chapters_page
 
 
+def test_editor_selection_syncs_generation_current_chapter_to_project_config():
+    editor_store = (FRONTEND_SRC / "stores" / "editor.ts").read_text(encoding="utf-8")
+
+    assert "syncCurrentChapterConfig" in editor_store
+    assert "serviceBridge.getProjectConfig()" in editor_store
+    assert "serviceBridge.saveProjectConfig(" in editor_store
+    assert "novelParams.chapterNum = String(chapterOrder)" in editor_store
+
+
+def test_app_layout_context_panel_can_select_global_current_chapter():
+    app_layout = (FRONTEND_SRC / "layouts" / "AppLayout.vue").read_text(encoding="utf-8")
+    generation_page = (FRONTEND_SRC / "pages" / "GenerationPage.vue").read_text(encoding="utf-8")
+
+    assert "章节焦点" in app_layout
+    assert "SelectField" in app_layout
+    assert "contextChapterOptions" in app_layout
+    assert "selectedContextChapterId" in app_layout
+    assert "selectContextChapter" in app_layout
+    assert "editorStore.selectChapter(chapterId)" in app_layout
+    assert "切换后同步为全局当前章节" in app_layout
+    assert "globalActiveChapter" in generation_page
+    assert "globalActiveChapter.value?.order ?? Number(projectConfig.value?.novelParams.chapterNum || 0)" in generation_page
+
+
 def test_project_page_supports_real_project_create_and_switch_through_service_bridge():
     service_bridge = (FRONTEND_SRC / "services" / "serviceBridge.ts").read_text(encoding="utf-8")
     projects_store = (FRONTEND_SRC / "stores" / "projects.ts").read_text(encoding="utf-8")

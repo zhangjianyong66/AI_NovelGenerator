@@ -80,6 +80,7 @@ import {
   updateProjectWorkspaceState,
   type GenerationBatchFormState,
 } from '@/services/workspaceStateStorage'
+import { useEditorStore } from '@/stores/editor'
 import { useGenerationStore } from '@/stores/generation'
 import { useProjectsStore } from '@/stores/projects'
 
@@ -90,8 +91,10 @@ const existingChapterStages = new Set<GenerationStage>(['finalization', 'consist
 const refreshChapterStages = new Set<GenerationStage>(['draft', 'finalization', 'batchDraft', 'batchFinalization'])
 const existingBatchStages = new Set<GenerationStage>(['batch', 'batchFinalization', 'batchConsistency'])
 const projectsStore = useProjectsStore()
+const editorStore = useEditorStore()
 const generationStore = useGenerationStore()
 const { jobs, isLoading } = storeToRefs(generationStore)
+const { activeChapter: globalActiveChapter } = storeToRefs(editorStore)
 const errorMessage = ref('')
 const selectedJobId = ref('')
 const bridgeStatus = ref<ServiceBridgeStatus>({ ...serviceBridge.getStatus() })
@@ -159,7 +162,7 @@ const selectedJob = computed(() => jobs.value.find((job) => job.id === selectedJ
 const availableChapterNumbers = computed(
   () => new Set(chapters.value.filter((chapter) => chapter.status !== 'planned').map((chapter) => chapter.order)),
 )
-const currentChapterNumber = computed(() => Number(projectConfig.value?.novelParams.chapterNum || 0))
+const currentChapterNumber = computed(() => globalActiveChapter.value?.order ?? Number(projectConfig.value?.novelParams.chapterNum || 0))
 const isCurrentChapterValid = computed(() => Number.isInteger(currentChapterNumber.value) && currentChapterNumber.value > 0)
 const hasCurrentChapterFile = computed(() => availableChapterNumbers.value.has(currentChapterNumber.value))
 const chapterTargetStatus = computed<StatusMessageType>(() => {

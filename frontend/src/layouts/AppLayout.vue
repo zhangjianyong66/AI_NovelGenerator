@@ -92,11 +92,20 @@
 
       <section class="context-section">
         <h2>章节焦点</h2>
-        <template v-if="activeChapter">
-          <strong>第 {{ activeChapter.order }} 章 · {{ activeChapter.title }}</strong>
+        <template v-if="activeChapter && chapters.length > 0">
+          <SelectField
+            class="context-select"
+            :model-value="selectedContextChapterId"
+            label="当前章节"
+            :options="contextChapterOptions"
+            :disabled="!canWriteToBackend"
+            :hint="canWriteToBackend ? '切换后同步为全局当前章节。' : writeUnavailableMessage"
+            @update:model-value="selectContextChapter"
+          />
           <p>{{ activeChapter.synopsis }}</p>
         </template>
         <p v-else class="muted">暂无章节选择</p>
+        <p v-if="editorError" class="context-error">{{ editorError }}</p>
       </section>
     </aside>
   </div>
@@ -120,6 +129,7 @@ import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 
+import SelectField from '@/components/ui/SelectField.vue'
 import { serviceBridge, type ServiceBridgeStatus } from '@/services/serviceBridge'
 import { useEditorStore } from '@/stores/editor'
 import { useGenerationStore } from '@/stores/generation'
@@ -155,7 +165,7 @@ const isNavCollapsed = ref(readLayoutPreference(layoutStorageKeys.navCollapsed))
 const isContextCollapsed = ref(readLayoutPreference(layoutStorageKeys.contextCollapsed))
 
 const { activeProject } = storeToRefs(projectsStore)
-const { activeChapter } = storeToRefs(editorStore)
+const { activeChapter, chapters, error: editorError } = storeToRefs(editorStore)
 const { runningJob } = storeToRefs(generationStore)
 
 const navItems = [
@@ -177,6 +187,13 @@ const projectProgress = computed(() => {
   if (!activeProject.value || activeProject.value.chaptersTotal === 0) return '0%'
   return `${Math.round((activeProject.value.chaptersCompleted / activeProject.value.chaptersTotal) * 100)}%`
 })
+const contextChapterOptions = computed(() =>
+  chapters.value.map((chapter) => ({
+    value: chapter.id,
+    label: `第 ${chapter.order} 章 ${chapter.title}`,
+  })),
+)
+const selectedContextChapterId = computed(() => activeChapter.value?.id ?? '')
 
 const syncBridgeStatus = () => {
   bridgeStatus.value = { ...serviceBridge.getStatus() }
@@ -190,6 +207,11 @@ const toggleNav = () => {
 const toggleContext = () => {
   isContextCollapsed.value = !isContextCollapsed.value
   writeLayoutPreference(layoutStorageKeys.contextCollapsed, isContextCollapsed.value)
+}
+
+const selectContextChapter = (chapterId: string) => {
+  if (!canWriteToBackend.value) return
+  editorStore.selectChapter(chapterId)
 }
 
 onMounted(async () => {
@@ -420,6 +442,19 @@ watch(
 .context-section .mode-note {
   margin: 0 0 10px;
   color: var(--color-warning);
+  font-weight: 600;
+}
+
+.context-select {
+  display: block;
+}
+
+.context-select :deep(.field__control) {
+  width: 100%;
+}
+
+.context-error {
+  color: var(--color-danger) !important;
   font-weight: 600;
 }
 
