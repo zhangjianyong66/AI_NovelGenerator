@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.server import create_app
+from app.services.generation_job_store import GenerationJobStore
 from novel_generator.finalization import finalize_chapter
 
 
@@ -469,6 +470,40 @@ def test_generation_job_endpoint_persists_failed_job_across_app_restart(tmp_path
     assert persisted_job["status"] == "failed"
     assert "请先生成章节目录" in persisted_job["error"]
     assert any("执行失败：请先生成章节目录" in line for line in persisted_job["log"])
+
+
+def test_generation_job_endpoint_marks_unfinished_jobs_failed_on_app_restart(tmp_path):
+    output_path = tmp_path / "novel"
+    output_path.mkdir()
+    config_file = tmp_path / "config.json"
+    state_db_file = tmp_path / "state.sqlite3"
+    write_generation_config(config_file, output_path)
+    store = GenerationJobStore(state_db_file)
+    store.save_job(
+        {
+            "id": "job-stale-running",
+            "projectId": "current",
+            "title": "润色章节定稿",
+            "stage": "finalization",
+            "status": "running",
+            "progress": 5,
+            "startedAt": "2026-06-30 00:06:56",
+            "log": ["任务已开始执行真实生成器"],
+            "error": None,
+        },
+        {"projectId": "current", "stage": "finalization", "chapterNumber": 1},
+    )
+
+    restarted_client = TestClient(create_app(config_file=str(config_file), state_db_file=str(state_db_file)))
+
+    read_response = restarted_client.get("/api/generation-jobs/job-stale-running")
+
+    assert read_response.status_code == 200
+    job = read_response.json()
+    assert job["status"] == "failed"
+    assert job["progress"] == 100
+    assert job["error"] == "后端服务重启，任务已中断"
+    assert "后端服务重启，任务已中断" in job["log"]
 
 
 def test_generation_job_endpoint_supports_core_stages(tmp_path, monkeypatch):

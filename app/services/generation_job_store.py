@@ -82,6 +82,41 @@ class GenerationJobStore:
             return None
         return self._row_to_job(row)
 
+    def mark_unfinished_jobs_failed(self, error_message: str) -> int:
+        updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, log_json
+                FROM generation_jobs
+                WHERE status IN ('queued', 'running')
+                """
+            ).fetchall()
+            for row in rows:
+                log = json.loads(row["log_json"])
+                if error_message not in log:
+                    log.append(error_message)
+                connection.execute(
+                    """
+                    UPDATE generation_jobs
+                    SET status = ?,
+                        progress = ?,
+                        log_json = ?,
+                        error = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        "failed",
+                        100,
+                        json.dumps(log, ensure_ascii=False),
+                        error_message,
+                        updated_at,
+                        row["id"],
+                    ),
+                )
+        return len(rows)
+
     def _init_schema(self) -> None:
         with self._connect() as connection:
             connection.execute(

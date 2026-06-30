@@ -119,6 +119,7 @@
   - `POST /api/generation-jobs` 对可执行阶段应尽快返回已持久化的 `queued` 或 `running` 初始快照，不等待真实生成完成。
   - 后台执行开始时保存并广播 `running/progress=5`；完成后保存并广播最终 `done` 或 `failed`。
   - 前端和测试不得假设创建响应已经包含最终日志、错误或输出文件结果；需要通过 WebSocket、列表接口或详情接口读取最终状态。
+  - 后台执行线程只存在于当前 FastAPI 进程；`create_app(...)` 启动时必须把 SQLite 中遗留的 `queued` / `running` 任务持久化为 `failed/progress=100/error="后端服务重启，任务已中断"`，避免后端重启后 UI 继续显示已失去执行线程的任务。
 
 ### 4. Validation & Error Matrix
 
@@ -127,6 +128,7 @@
 - `batchDraft` 已有章节文件 -> 任务日志记录跳过，不覆盖章节正文。
 - `batchFinalization` / `batchConsistency` / 兼容旧 `batch` 缺章节文件 -> HTTP `400`，`detail="章节文件不存在：<chapter>"`。
 - 批量阶段单章失败 -> 任务响应 `status="failed"`，不是 HTTP 失败；日志包含逐章失败原因。
+- 后端重启时 SQLite 中仍是 `queued` / `running` 的任务 -> 启动清理持久化为 `failed`，日志追加“后端服务重启，任务已中断”。
 - `architecture` / `directory` / `draft` / `finalization` / `consistency` 缺阶段模型选择 -> 后台最终保存 `GenerationJob(status="failed")`，`error` 为中文原因。
 - LLM 配置不存在、缺 API Key、缺模型名、缺接口格式 -> 后台最终保存 `failed` 任务，不伪装成功。
 - 旧生成函数返回空文件或未写目标文件 -> 后台最终保存 `failed` 任务，说明目标生成结果为空。
@@ -157,6 +159,7 @@
   - 成功任务的 `status == "done"`、`progress == 100`。
   - `POST /api/generation-jobs` 创建可执行任务时先返回 `queued` 或 `running`，不阻塞等待最终状态。
   - WebSocket 订阅能收到 `generationJobUpdated`，且最终快照包含 `done` 或 `failed`、日志和错误。
+  - `state.sqlite3` 中启动前遗留的 `queued` / `running` 任务，在重建 app 后详情接口返回 `failed`、`progress == 100` 和中文中断错误。
   - 输出文件真实落盘且非空。
   - 缺 API Key / 缺设定文件最终保存 `failed` 任务和中文错误。
   - `draft` 成功时断言双路径章节文件同步，且章节列表可读。

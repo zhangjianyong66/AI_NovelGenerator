@@ -957,6 +957,7 @@ def create_app(
     config_path = Path(config_file) if config_file is not None else DEFAULT_CONFIG_FILE
     state_path = Path(state_db_file) if state_db_file is not None else _default_state_db_file(config_path)
     job_store = GenerationJobStore(state_path)
+    job_store.mark_unfinished_jobs_failed("后端服务重启，任务已中断")
     project_store = ProjectStore(state_path)
     job_connections = GenerationJobConnectionManager()
     job_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="generation-job")

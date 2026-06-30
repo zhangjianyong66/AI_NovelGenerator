@@ -69,6 +69,7 @@ def _chapter_file_path(output_path: Path, chapter_number: int) -> Path:
 - Save: `save_job(job: dict[str, Any], request: dict[str, Any]) -> None`
 - List: `list_jobs(project_id: str) -> list[dict[str, Any]]`
 - Detail: `get_job(job_id: str) -> dict[str, Any] | None`
+- Startup cleanup: `mark_unfinished_jobs_failed(error_message: str) -> int`
 - App factory: `create_app(config_file: str | Path | None = None, state_db_file: str | Path | None = None)`
 
 ### 3. Contracts
@@ -89,12 +90,14 @@ def _chapter_file_path(output_path: Path, chapter_number: int) -> Path:
   - `updated_at TEXT NOT NULL`
 - `log_json` is the JSON array backing `GenerationJob.log`.
 - `request_json` stores the original `GenerationJobCreateRequest` payload for future retry work; current API responses do not expose it.
+- `create_app(...)` must call `GenerationJobStore.mark_unfinished_jobs_failed("后端服务重启，任务已中断")` during startup initialization. The local background executor is process memory only; after a backend restart, persisted `queued` / `running` jobs cannot resume and must not be shown as still running.
 
 ### 4. Validation & Error Matrix
 
 - Unknown `job_id` -> API returns HTTP `404` with `detail="任务不存在"`.
 - SQLite read/write failure during task creation -> do not pretend the task succeeded; allow the request to fail loudly.
 - Executable generation failure -> persist `GenerationJob(status="failed")`, `error`, and full log.
+- Backend restart with persisted `queued` / `running` job -> startup cleanup persists `status="failed"`, `progress=100`, `error="后端服务重启，任务已中断"` and appends the same message to `log`.
 - Unsupported stage / invalid batch range / missing chapter validation remains owned by `app/api/server.py` before store writes.
 
 ### 5. Good/Base/Bad Cases
@@ -102,7 +105,9 @@ def _chapter_file_path(output_path: Path, chapter_number: int) -> Path:
 - Good: Create a `consistency` task with a fake审校 executor, rebuild `TestClient(create_app(..., state_db_file=same_path))`, then read `status == "done"` and the persisted审校 result log.
 - Good: Create an `architecture` task with fake executor, then rebuild the app and read `status == "done"`, `progress == 100`, and completion log.
 - Base: Create a `draft` task without `Novel_directory.txt`, then rebuild the app and read `status == "failed"` plus Chinese error.
+- Base: Insert or leave a `running` job in `state.sqlite3`, rebuild `create_app(...)`, then read `status == "failed"` and `error == "后端服务重启，任务已中断"`.
 - Bad: Keeping task state only in a process-local dict; the frontend appears usable until the backend restarts, then history disappears.
+- Bad: Returning persisted `running` after process restart; the execution thread died with the old process, so the UI would mislead the user.
 - Bad: Storing task history in `config.json`; that risks mixing transient execution logs with user configuration and WebDAV backup data.
 
 ### 6. Tests Required
@@ -113,6 +118,7 @@ def _chapter_file_path(output_path: Path, chapter_number: int) -> Path:
   - done `consistency` jobs survive app/client reconstruction with审校 result log.
   - done jobs survive app/client reconstruction with progress, log, and null error.
   - failed jobs survive app/client reconstruction with Chinese error and log.
+  - queued/running jobs left in SQLite before app creation are marked failed with the restart interruption message.
   - existing in-request list/detail behavior still works.
 - Full regression command: `.venv/bin/python -m pytest tests`.
 
