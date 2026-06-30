@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 
 import { serviceBridge } from '@/services/serviceBridge'
 import type { Chapter, ProjectFile, ProjectFileId } from '@/services/types'
+import { getProjectWorkspaceState, updateProjectWorkspaceState } from '@/services/workspaceStateStorage'
 
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error) return error.message
@@ -13,6 +14,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 export const useEditorStore = defineStore('editor', {
   state: () => ({
+    activeProjectId: '',
     chapters: [] as Chapter[],
     activeChapterId: '',
     chapterDrafts: {} as Record<string, string>,
@@ -62,7 +64,14 @@ export const useEditorStore = defineStore('editor', {
     },
   },
   actions: {
-    resetProjectState() {
+    persistActiveChapter() {
+      updateProjectWorkspaceState(this.activeProjectId, { activeChapterId: this.activeChapterId })
+    },
+    persistActiveProjectFile() {
+      updateProjectWorkspaceState(this.activeProjectId, { activeProjectFileId: this.activeProjectFileId })
+    },
+    resetProjectState(projectId = '') {
+      this.activeProjectId = projectId
       this.chapters = []
       this.activeChapterId = ''
       this.chapterDrafts = {}
@@ -73,6 +82,7 @@ export const useEditorStore = defineStore('editor', {
       this.lastSavedAt = ''
     },
     async loadChapters(projectId: string) {
+      this.activeProjectId = projectId
       this.isLoading = true
       this.error = ''
       try {
@@ -80,7 +90,13 @@ export const useEditorStore = defineStore('editor', {
         this.chapterDrafts = Object.fromEntries(
           this.chapters.map((chapter) => [chapter.id, chapter.content]),
         ) as Record<string, string>
-        this.activeChapterId = this.activeChapterId || this.chapters[0]?.id || ''
+        const savedChapterId = getProjectWorkspaceState(projectId).activeChapterId
+        this.activeChapterId =
+          this.chapters.find((chapter) => chapter.id === savedChapterId)?.id ??
+          this.chapters.find((chapter) => chapter.id === this.activeChapterId)?.id ??
+          this.chapters[0]?.id ??
+          ''
+        this.persistActiveChapter()
       } catch (error) {
         this.error = getErrorMessage(error, '加载章节失败')
         throw error
@@ -90,17 +106,20 @@ export const useEditorStore = defineStore('editor', {
     },
     selectChapter(chapterId: string) {
       this.activeChapterId = chapterId
+      this.persistActiveChapter()
     },
     selectPreviousChapter() {
       const activeIndex = this.chapters.findIndex((chapter) => chapter.id === this.activeChapterId)
       if (activeIndex > 0) {
         this.activeChapterId = this.chapters[activeIndex - 1].id
+        this.persistActiveChapter()
       }
     },
     selectNextChapter() {
       const activeIndex = this.chapters.findIndex((chapter) => chapter.id === this.activeChapterId)
       if (activeIndex >= 0 && activeIndex < this.chapters.length - 1) {
         this.activeChapterId = this.chapters[activeIndex + 1].id
+        this.persistActiveChapter()
       }
     },
     updateActiveChapterDraft(content: string) {
@@ -150,6 +169,7 @@ export const useEditorStore = defineStore('editor', {
         this.activeChapterId = createdChapter.id
         this.chapterDrafts[createdChapter.id] = createdChapter.content
         this.lastSavedAt = createdChapter.updatedAt
+        this.persistActiveChapter()
       } catch (error) {
         this.error = getErrorMessage(error, '创建章节失败')
         throw error
@@ -157,7 +177,8 @@ export const useEditorStore = defineStore('editor', {
         this.isSaving = false
       }
     },
-    async loadProjectFiles() {
+    async loadProjectFiles(projectId = '') {
+      this.activeProjectId = projectId || this.activeProjectId
       this.isLoading = true
       this.error = ''
       try {
@@ -165,7 +186,13 @@ export const useEditorStore = defineStore('editor', {
         this.projectFileDrafts = Object.fromEntries(
           this.projectFiles.map((file) => [file.id, file.content]),
         ) as Record<ProjectFileId, string>
-        this.activeProjectFileId = this.activeProjectFileId || this.projectFiles[0]?.id || 'novelSetting'
+        const savedFileId = getProjectWorkspaceState(this.activeProjectId).activeProjectFileId
+        this.activeProjectFileId =
+          this.projectFiles.find((file) => file.id === savedFileId)?.id ??
+          this.projectFiles.find((file) => file.id === this.activeProjectFileId)?.id ??
+          this.projectFiles[0]?.id ??
+          'novelSetting'
+        this.persistActiveProjectFile()
       } catch (error) {
         this.error = getErrorMessage(error, '加载项目文件失败')
         throw error
@@ -175,6 +202,7 @@ export const useEditorStore = defineStore('editor', {
     },
     selectProjectFile(fileId: ProjectFileId) {
       this.activeProjectFileId = fileId
+      this.persistActiveProjectFile()
     },
     updateActiveProjectFileDraft(content: string) {
       this.projectFileDrafts[this.activeProjectFileId] = content

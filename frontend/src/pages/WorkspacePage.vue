@@ -189,7 +189,7 @@ const loadWorkspace = async () => {
   syncBridgeStatus()
   await Promise.all([
     editorStore.loadChapters(activeProjectId.value),
-    editorStore.loadProjectFiles(),
+    editorStore.loadProjectFiles(activeProjectId.value),
     generationStore.loadJobs(activeProjectId.value),
   ])
   syncBridgeStatus()

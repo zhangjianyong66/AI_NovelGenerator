@@ -73,6 +73,13 @@ import ToggleField from '@/components/ui/ToggleField.vue'
 import { GenerationActions, GenerationJobDetail, GenerationJobList } from '@/features/generation'
 import { serviceBridge, type ServiceBridgeStatus } from '@/services/serviceBridge'
 import type { Chapter, GenerationStage, ProjectConfig } from '@/services/types'
+import {
+  defaultGenerationBatchForm,
+  getProjectWorkspaceState,
+  normalizeGenerationBatchForm,
+  updateProjectWorkspaceState,
+  type GenerationBatchFormState,
+} from '@/services/workspaceStateStorage'
 import { useGenerationStore } from '@/stores/generation'
 import { useProjectsStore } from '@/stores/projects'
 
@@ -91,18 +98,32 @@ const bridgeStatus = ref<ServiceBridgeStatus>({ ...serviceBridge.getStatus() })
 const projectConfig = ref<ProjectConfig | null>(null)
 const chapters = ref<Chapter[]>([])
 const refreshedCompletedJobIds = new Set<string>()
-const batchForm = ref({
-  startChapter: 1,
-  endChapter: 1,
-  targetWords: 3000,
-  minimumWords: 2000,
-  autoEnrich: false,
-})
+const isRestoringWorkspaceState = ref(true)
+const batchForm = ref<GenerationBatchFormState>({ ...defaultGenerationBatchForm })
 const canWriteToBackend = computed(() => serviceBridge.canWrite(bridgeStatus.value))
 const writeUnavailableMessage = computed(() => serviceBridge.getWriteUnavailableMessage(bridgeStatus.value))
 
 const syncBridgeStatus = () => {
   bridgeStatus.value = { ...serviceBridge.getStatus() }
+}
+
+const persistGenerationWorkspaceState = () => {
+  if (isRestoringWorkspaceState.value || !projectsStore.activeProjectId) return
+  updateProjectWorkspaceState(projectsStore.activeProjectId, {
+    generationBatchForm: { ...batchForm.value },
+    generationSelectedJobId: selectedJobId.value,
+  })
+}
+
+const restoreGenerationWorkspaceState = () => {
+  const savedState = getProjectWorkspaceState(projectsStore.activeProjectId)
+  batchForm.value = normalizeGenerationBatchForm(savedState.generationBatchForm)
+  selectedJobId.value =
+    jobs.value.find((job) => job.id === savedState.generationSelectedJobId)?.id ??
+    jobs.value[0]?.id ??
+    ''
+  isRestoringWorkspaceState.value = false
+  persistGenerationWorkspaceState()
 }
 
 const loadGenerationContext = async () => {
@@ -127,7 +148,7 @@ onMounted(async () => {
   await generationStore.loadJobs(projectsStore.activeProjectId)
   generationStore.subscribeToJobUpdates(projectsStore.activeProjectId)
   syncBridgeStatus()
-  selectedJobId.value = jobs.value[0]?.id ?? ''
+  restoreGenerationWorkspaceState()
 })
 
 onUnmounted(() => {
@@ -284,6 +305,7 @@ const createBatchJob = async (stage: GenerationStage) => {
 watch(jobs, (nextJobs) => {
   if (!selectedJobId.value || !nextJobs.some((job) => job.id === selectedJobId.value)) {
     selectedJobId.value = nextJobs[0]?.id ?? ''
+    persistGenerationWorkspaceState()
   }
   for (const job of nextJobs) {
     if (job.status !== 'done' && job.status !== 'failed') continue
@@ -293,6 +315,18 @@ watch(jobs, (nextJobs) => {
     void loadGenerationContext()
   }
 })
+
+watch(selectedJobId, () => {
+  persistGenerationWorkspaceState()
+})
+
+watch(
+  batchForm,
+  () => {
+    persistGenerationWorkspaceState()
+  },
+  { deep: true },
+)
 </script>
 
 <style scoped>
