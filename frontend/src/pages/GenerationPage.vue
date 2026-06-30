@@ -10,41 +10,46 @@
     <StatusMessage :type="chapterTargetStatus" :message="chapterTargetMessage" />
 
     <FormSection title="创建任务" description="后端会按当前项目配置创建任务；草稿、定稿和审校会使用当前章节号，审校结果会写入任务日志。">
-      <GenerationActions :disabled="isLoading || !canWriteToBackend" @create="createJob" @create-batch="createBatchJob" />
+      <GenerationActions :disabled="isLoading || !canWriteToBackend" @create="createJob" />
     </FormSection>
 
     <FormSection title="批量章节参数" description="批量草稿会生成缺失章节并跳过已有章节；批量定稿和批量审校会逐章处理已有章节文件。">
       <StatusMessage :type="batchValidationStatus" :message="batchValidationMessage" />
-      <div class="batch-grid">
-        <TextField
-          :model-value="batchForm.startChapter"
-          label="起始章节"
-          min="1"
-          type="number"
-          @update:model-value="batchForm.startChapter = Number($event)"
-        />
-        <TextField
-          :model-value="batchForm.endChapter"
-          label="结束章节"
-          min="1"
-          type="number"
-          @update:model-value="batchForm.endChapter = Number($event)"
-        />
-        <TextField
-          :model-value="batchForm.targetWords"
-          label="目标字数"
-          min="0"
-          type="number"
-          @update:model-value="batchForm.targetWords = Number($event)"
-        />
-        <TextField
-          :model-value="batchForm.minimumWords"
-          label="最低字数"
-          min="0"
-          type="number"
-          @update:model-value="batchForm.minimumWords = Number($event)"
-        />
-        <ToggleField v-model="batchForm.autoEnrich" label="自动扩写" />
+      <div class="batch-controls">
+        <div class="batch-grid">
+          <TextField
+            :model-value="batchForm.startChapter"
+            label="起始章节"
+            min="1"
+            type="number"
+            @update:model-value="batchForm.startChapter = Number($event)"
+          />
+          <TextField
+            :model-value="batchForm.endChapter"
+            label="结束章节"
+            min="1"
+            type="number"
+            @update:model-value="batchForm.endChapter = Number($event)"
+          />
+          <TextField
+            :model-value="batchForm.targetWords"
+            label="目标字数"
+            min="0"
+            type="number"
+            @update:model-value="batchForm.targetWords = Number($event)"
+          />
+          <TextField
+            :model-value="batchForm.minimumWords"
+            label="最低字数"
+            min="0"
+            type="number"
+            @update:model-value="batchForm.minimumWords = Number($event)"
+          />
+          <ToggleField v-model="batchForm.autoEnrich" label="自动扩写" />
+        </div>
+        <div class="batch-actions">
+          <GenerationActions mode="batch" :disabled="isLoading || !canWriteToBackend" @create-batch="createBatchJob" />
+        </div>
       </div>
     </FormSection>
 
@@ -339,11 +344,27 @@ watch(
   gap: 16px;
 }
 
+.batch-controls {
+  display: grid;
+  gap: var(--space-7);
+  margin-top: var(--space-5);
+}
+
 .batch-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) 140px;
-  gap: 12px;
+  grid-template-columns: repeat(4, minmax(150px, 1fr)) minmax(120px, 0.65fr);
+  gap: var(--space-5);
   align-items: end;
+}
+
+.batch-actions {
+  display: flex;
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-6);
+}
+
+.batch-actions :deep(.generation-actions) {
+  width: 100%;
 }
 
 .generation-grid :deep(.job-list) {
@@ -404,5 +425,17 @@ watch(
   margin-bottom: 12px;
   color: var(--color-text-muted);
   font-size: 13px;
+}
+
+@media (max-width: 1180px) {
+  .batch-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .batch-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>
