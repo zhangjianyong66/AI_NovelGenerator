@@ -659,3 +659,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 20: 前端工作上下文持久化
+
+**Date**: 2026-06-30
+**Task**: 前端工作上下文持久化
+**Branch**: `main`
+
+### Summary
+
+按项目持久化章节/项目文件选择、生成任务选择和批量生成参数，并记录前端持久化约定。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d8e52fe` | (see git log) |
+| `40816f4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
